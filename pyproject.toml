@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "dkfz-dicom-deid"
+version = "0.1.0"
+description = ""
+authors = ["rajesh.baidya <rajesh.baidya@dkfz-heidelberg.de>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "3.12"
+pydicom = "^2.4.4"
+matplotlib = "^3.9.0"
+ipykernel = "^6.29.4"
+pandas = "^2.2.2"
+torch = "^2.3.1"
+transformers = "^4.41.2"
+ipywidgets = "^8.1.3"
+torchvision = "^0.18.1"
+easyocr = "^1.7.1"
+pytesseract = "^0.3.10"
+opencv-python = "^4.10.0.84"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
