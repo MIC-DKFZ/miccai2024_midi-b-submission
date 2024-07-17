@@ -1,3 +1,5 @@
+# run this script to download the test DICOM datasets
+
 import os.path
 import zipfile
 import requests 
