@@ -1,5 +1,7 @@
 from pathlib import Path
+from ast import literal_eval
 import pydicom
+import json
 from dicomanonymizer import anonymize, simpledicomanonymizer
 from dicomanonymizer.simpledicomanonymizer import (
     replace, replace_UID, empty_or_replace, delete_or_replace,
@@ -19,6 +21,19 @@ DEID_DATASET_ROOT = '/home/r079a/Desktop/de-identification/dataset'
 def ensure_dir(path: Path):
     return path.mkdir(parents=True, exist_ok=True)
 
+def load_ps3_tags():
+    json_path = './docs/ps3.3_profile_attrs.json'
+
+    tags = {}    
+    with open(json_path) as f:
+        tags = json.load(f)
+    
+    for tag in tags:
+        items = tags[tag]
+        tags[tag] = [literal_eval(i) for i in items]
+
+    return tags
+
 
 def custom_init_actions():
     """
@@ -27,15 +42,17 @@ def custom_init_actions():
     :return Dict object which map actions to tags
     """
 
+    ps3_tags = load_ps3_tags()
+
     # anonymization_actions = {tag: replace for tag in D_TAGS}
-    anonymization_actions = {tag: replace_UID for tag in U_TAGS}
-    anonymization_actions.update({tag: empty_or_replace for tag in Z_D_TAGS})
-    anonymization_actions.update({tag: delete_or_replace for tag in X_D_TAGS})
+    anonymization_actions = {tag: replace_UID for tag in ps3_tags['UID_TAGS']}
+    anonymization_actions.update({tag: empty_or_replace for tag in ps3_tags['Z_D_TAGS']})
+    anonymization_actions.update({tag: delete_or_replace for tag in ps3_tags['X_D_TAGS']})
     anonymization_actions.update(
-        {tag: delete_or_empty_or_replace for tag in X_Z_D_TAGS}
+        {tag: delete_or_empty_or_replace for tag in ps3_tags['X_Z_D_TAGS']}
     )
     anonymization_actions.update(
-        {tag: delete_or_empty_or_replace_UID for tag in X_Z_U_STAR_TAGS}
+        {tag: delete_or_empty_or_replace_UID for tag in ps3_tags['X_Z_U_STAR_TAGS']}
     )
     return anonymization_actions
 
@@ -76,23 +93,24 @@ def anonymize_dataset(
             dataset.walk(range_callback)
         # Individual Tags
         else:
-            # From : https://github.com/KitwareMedical/dicom-anonymizer/pull/18
-            # The meta header information is located in the `file_meta` dataset
-            # For tags with tag group `0x0002` we thus apply the action to the `file_meta` dataset
+            try:
+                element = dataset.get(tag)
+                if element:
+                    earliervalue = element.value
+            except KeyError:
+                print("Cannot get element from tag: ", tag_to_hex_strings(tag))
+
             if tag[0] == 0x0002:
                 if not hasattr(dataset, "file_meta"):
                     continue
                 # Apply rule to meta information header
                 action(dataset.file_meta, tag)
             else:
-                action(dataset, tag)
-            try:
-                element = dataset.get(tag)
-            except KeyError:
-                print("Cannot get element from tag: ", tag_to_hex_strings(tag))
+                action(dataset, tag)            
             
             if element:
-                action_history[element.tag] = action.__name__
+                if earliervalue != element.value:
+                    action_history[element.tag] = action.__name__
 
             # Get private tag to restore it later
             # if element and element.tag.is_private:
