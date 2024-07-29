@@ -25,10 +25,21 @@ SHIFT_DATE_OFFSET = 120
 
 
 def int_tuple_to_basetag(tag: tuple):
+    if isinstance(tag, BaseTag):
+        return tag
+    
     # Combine the group and element into a single integer
     combined_tag = (tag[0] << 16) + tag[1]
     return BaseTag(combined_tag)
 
+
+def format_action_dict(actions):
+    formatted = {}
+
+    for tag in actions.keys():
+        formatted[literal_eval(tag)] = actions[tag]
+
+    return formatted
 
 def load_ps3_tags(json_path: str):
     tags = {}    
@@ -40,6 +51,30 @@ def load_ps3_tags(json_path: str):
         tags[tag] = [literal_eval(i) for i in items]
 
     return tags
+
+def replace_with_value(options: Union[list, dict]):
+    """
+    Replace the given tag with a predefined value.
+
+    :param options: contains one value:
+        - value: the string used to replace the tag value
+    If options is a list, value is expected to be the first value.
+    """
+
+    def apply_replace_with_value(dataset, tag):
+        if isinstance(options, dict):
+            try:
+                value = options["value"]
+            except KeyError as e:
+                raise ValueError(f"Missing field in tag dictionary {tag}: {e.args[0]}")
+        else:
+            value = options[0]
+
+        element = dataset.get(tag)
+        if element is not None:
+            element.value = value
+
+    return apply_replace_with_value
 
 def get_hashid(key: str, method: str = 'sha256', nchar: int =16):
     """
@@ -68,6 +103,7 @@ def parse_date_string(date_string):
         # Define possible formats
         date_formats = [
             "%Y%m%d%H%M%S",  # Full format with hours, minutes, and seconds
+            "%Y%m%d%H%M%S.%f",
             "%Y%m%d"         # Format with only date
         ]
         
@@ -158,6 +194,10 @@ class DcmPHIDetector:
         #     print(f"{e[1]}: {self.process_enitity_val(e[0])}")
         return entities
     
+    def detect_entities_from_element(self, element: pydicom.DataElement) -> list:
+        element_text = f"{element.name}: {self.process_element_val(element)}"
+        return self.detect_entities(element_text)
+    
     def deidentified_element_val(self, element: pydicom.DataElement) -> Union[str, list[str]]:
         if str(element.value).strip() == "":
             return ""
@@ -187,6 +227,7 @@ class DCMPS33Anonymizer:
         self.uid_dict = {}
         self.id_dict = {}
         self.history = {}
+        self.shift_date_offset = SHIFT_DATE_OFFSET
 
         self.detector = phi_detector
 
@@ -285,9 +326,12 @@ class DCMPS33Anonymizer:
         """
         # print(element.name, element.VR, element.value)
         if element.VR == "DA":
-            element.value = self.shift_date(element.value, days=SHIFT_DATE_OFFSET)
+            element.value = self.shift_date(element.value, days=self.shift_date_offset)
         elif element.VR == "DT":
-            element.value = self.shift_date(element.value, days=SHIFT_DATE_OFFSET, date_only=False)
+            element.value = self.shift_date(element.value, days=self.shift_date_offset, date_only=False)
+        elif element.VR == "TM":
+            # Do noting for TIME only
+            pass
         else:
             pass
 
@@ -322,13 +366,15 @@ class DCMPS33Anonymizer:
             self.custom_replace_date_time_element(element)
         elif element.VR == "UN":
             element.value = b"Anonymized"
+        elif element.VR == "AS":
+            # ignore AS AgeString
+            pass
         elif element.VR == "SQ":
             for sub_dataset in element.value:
                 for sub_element in sub_dataset.elements():
                     if isinstance(sub_element, pydicom.dataelem.RawDataElement):
                         # RawDataElement is a NamedTuple, so cannot set its value attribute.
                         # Convert it to a DataElement, replace value, and set it back.
-                        # Found in https://github.com/KitwareMedical/dicom-anonymizer/issues/63
                         e2 = pydicom.dataelem.DataElement_from_raw(sub_element)
                         replace_element(e2)
                         sub_dataset.add(e2)
@@ -357,10 +403,12 @@ class DCMPS33Anonymizer:
 
         See: https://laurelbridge.com/pdf/Dicom-Anonymization-Conformance-Statement.pdf
         """
-        if element.VR in ("SH", "PN", "UI", "LO", "LT", "CS", "AS", "ST", "UT"):
+        if element.VR in ("SH", "PN", "UI", "LO", "LT", "CS", "ST", "UT"):
             # print(element.name, element.VR, element.value)
             if self.detector:
-                element.value = self.detector.deidentified_element_val(element)
+                entities = self.detector.detect_entities_from_element(element)
+                if len(entities) > 0:
+                    element.value = ""
             # pass
         elif element.VR in ("DT", "DA", "TM"):
             self.custom_replace_date_time_element(element)
@@ -370,6 +418,9 @@ class DCMPS33Anonymizer:
             element.value = "0"
         elif element.VR == "UN":
             element.value = b""
+        elif element.VR == "AS":
+            # ignore AS AgeString
+            pass
         elif element.VR == "SQ":
             for sub_dataset in element.value:
                 for sub_element in sub_dataset.elements():
@@ -426,10 +477,24 @@ class DCMPS33Anonymizer:
 
         if extra_anonymization_rules is not None:
             current_anonymization_actions.update(extra_anonymization_rules)
+
         
-        private_tags = []
+        if delete_private_tags:
+            private_tags_actions = {}
+            
+            # Iterate through the data elements and check for private tags
+            for element in dataset:
+                # A tag is a tuple of (group, element)
+                group, _ = element.tag.group, element.tag.element
+                if group % 2 != 0 and (element.name.startswith('[') and element.name.endswith("]")):
+                    private_tags_actions[(element.tag.group, element.tag.element)] = delete_or_replace
+                    # print(f"Private Tag Found: {element.tag} - {element.name}, Private: {element.tag.is_private}")
+
+            if private_tags_actions:
+                current_anonymization_actions.update(private_tags_actions)
 
         action_history = {}
+        private_tags = []
 
         for tag, action in current_anonymization_actions.items():
             # check current tag already exists in the 
@@ -442,7 +507,7 @@ class DCMPS33Anonymizer:
                 if (
                     data_element.tag.group & tag[2] == tag[0]
                     and data_element.tag.element & tag[3] == tag[1]
-                ):
+                ):   
                     action(dataset, (data_element.tag.group, data_element.tag.element))
 
             element = None
@@ -471,8 +536,12 @@ class DCMPS33Anonymizer:
                         action_history[element.tag] = action.__name__
 
                 # Get private tag to restore it later
-                # if element and element.tag.is_private:
-                #    private_tags.append(get_private_tag(dataset, tag))
+                # check if the element is already not deleted
+                if element and action != delete and element.tag.is_private:
+                   private_tags.append(simpledicomanonymizer.get_private_tag(dataset, tag))
+                
+        
+        # print(private_tags)
 
         self.history = action_history
 
@@ -493,14 +562,21 @@ class DCMPS33Anonymizer:
                     )
         
     
-    def anonymize(self, input_path: str, output_path: str, opt_history: dict = {}):
+    def anonymize(self, input_path: str, output_path: str, opt_history: dict = {}, custom_actions: dict = {}):
         self.history = opt_history
 
-        anonymize(
-            input_path=str(input_path),
-            output_path=str(output_path),
-            anonymization_actions={},
-            delete_private_tags=False,
+        # anonymize(
+        #     input_path=str(input_path),
+        #     output_path=str(output_path),
+        #     anonymization_actions=custom_actions,
+        #     delete_private_tags=True,
+        # )
+
+        simpledicomanonymizer.anonymize_dicom_file(
+            in_file=str(input_path),
+            out_file=str(output_path),
+            extra_anonymization_rules=custom_actions,
+            delete_private_tags=True,
         )
 
         return self.uid_dict, self.id_dict, self.history
