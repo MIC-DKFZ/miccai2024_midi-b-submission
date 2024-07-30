@@ -7,6 +7,7 @@ from dicomanonymizer.anonymizer import isDICOMType
 
 from .utils import ensure_dir, list_all_files
 from .phi_detectors import DcmPHIDetector
+from .img_anonymizers import DCMImageAnonymizer
 from .ps_3_3 import DCMPS33Anonymizer, replace_with_value, format_action_dict
 
 class Anonymizer:
@@ -17,6 +18,7 @@ class Anonymizer:
         self.dcm_dirs = []
         self.series_props = {}
         self.anonymizer = None
+        self.img_anonymizer = None
 
         ensure_dir(self.output_path)
 
@@ -39,6 +41,7 @@ class Anonymizer:
         # initialize model
         phi_detector = DcmPHIDetector()
         self.anonymizer = DCMPS33Anonymizer(phi_detector=phi_detector)
+        self.img_anonymizer = DCMImageAnonymizer(phi_detector=phi_detector)
 
     
     def create_output_dirs(self):
@@ -78,7 +81,7 @@ class Anonymizer:
         
         return patientid
     
-    def run_on_file(self, filepath: str, parentdir: str):
+    def anonymize_metadata_on_file(self, filepath: str, parentdir: str):
 
         series_info = self.series_props[parentdir]
         
@@ -102,18 +105,29 @@ class Anonymizer:
             custom_actions=patient_attrs_action,
         )
 
-        return history
+        return history, output_file
+    
+    def anonymize_image_data_on_file(self, filepath: str, replace: bool = True):
+        # series_info = self.series_props[parentdir]
+
+        # filename = os.path.basename(filepath)
+        # output_file = f"{series_info['output_path']}/{filename}"
+        self.img_anonymizer.anonymize_dicom_file(
+            dcm_file=filepath,
+            out_file=filepath,
+        )
+
+
+
 
     def run(self):        
         progress_bar = tqdm.tqdm(total=self.total_dcms)
         for idx, dir in enumerate(self.dcm_dirs):
             dcms = list_all_files(dir)
             for dcm in dcms:
-                _ = self.run_on_file(dcm, dir)
+                _, outfile = self.anonymize_metadata_on_file(dcm, dir)
+                self.anonymize_image_data_on_file(outfile)
                 progress_bar.update(1)
-
-            if idx > 2:
-                break
         
         print(self.anonymizer.uid_dict)
         print(self.anonymizer.id_dict)

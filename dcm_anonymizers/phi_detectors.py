@@ -73,12 +73,10 @@ class DcmPHIDetector:
         if text == "":
             return []
         
-        # dcmnote = f"{element.name}: {self.process_element_val(element)}"
         outputs = self.model(text)
         outputs = self.filter_outputs(outputs)
         entities = self.process_outputs(outputs)
-        # for e in entities:
-        #     print(f"{e[1]}: {self.process_enitity_val(e[0])}")
+   
         return entities
     
     def detect_entities_from_element(self, element: pydicom.DataElement) -> list:
