@@ -1,16 +1,13 @@
-import hashlib
-import base64
-from typing import List, Union
-from ast import literal_eval
-from datetime import datetime, timedelta
-import pydicom
-from pydicom.tag import BaseTag
-from pydicom.multival import MultiValue
 import json
-import numpy as np
-from transformers import pipeline
+from typing import Union
+from ast import literal_eval
+from datetime import timedelta
 
-from dicomanonymizer import anonymize, simpledicomanonymizer
+import pydicom
+from pydicom.multival import MultiValue
+from pydicom.uid import generate_uid
+
+from dicomanonymizer import simpledicomanonymizer
 from dicomanonymizer.simpledicomanonymizer import (
     replace, empty_or_replace, delete_or_replace,
     delete_or_empty_or_replace, delete_or_empty_or_replace_UID,
@@ -20,18 +17,11 @@ from dicomanonymizer.simpledicomanonymizer import (
 
 from dicomanonymizer.format_tag import tag_to_hex_strings
 
-PS_3_3_ATTRS_JSON = './docs/ps3.3_profile_attrs.json'
+from .utils import int_tuple_to_basetag, get_hashid, parse_date_string
+from .phi_detectors import DcmPHIDetector
+
+PS_3_3_ATTRS_JSON = 'dcm_anonymizers/ps3.3_profile_attrs.json'
 SHIFT_DATE_OFFSET = 120
-
-
-def int_tuple_to_basetag(tag: tuple):
-    if isinstance(tag, BaseTag):
-        return tag
-    
-    # Combine the group and element into a single integer
-    combined_tag = (tag[0] << 16) + tag[1]
-    return BaseTag(combined_tag)
-
 
 def format_action_dict(actions):
     formatted = {}
@@ -76,158 +66,16 @@ def replace_with_value(options: Union[list, dict]):
 
     return apply_replace_with_value
 
-def get_hashid(key: str, method: str = 'sha256', nchar: int =16):
-    """
-    Generate a hash identifier.
-    :param key: input string for the hash algorithm.
-    :param method: an algorithm name. Select from hashlib.algorithms_guaranteed 
-    or hashlib.algorithms_available.
-    :param nchar: number of the first character to return. Set 0 for all characters.
-    :return: a string.
-    """
-    h = hashlib.new(method)
-    h.update(key.encode())
-
-    # for shake, the digest size is variable in length, let's just put it 32 bytes
-    if h.digest_size == 0:
-        hash_id = base64.b32encode(h.digest(32)).decode().replace("=", "")
-    else:
-        hash_id = base64.b32encode(h.digest()).decode().replace("=", "")
-
-    if nchar > 0:
-        hash_id = hash_id[:nchar]
-
-    return hash_id
-
-def parse_date_string(date_string):
-        # Define possible formats
-        date_formats = [
-            "%Y%m%d%H%M%S",  # Full format with hours, minutes, and seconds
-            "%Y%m%d%H%M%S.%f",
-            "%Y%m%d"         # Format with only date
-        ]
-        
-        # Try to parse the date string using the appropriate format
-        for date_format in date_formats:
-            try:
-                return datetime.strptime(date_string, date_format)
-            except ValueError:
-                continue
-        
-        # If no format matches, raise an error
-        raise ValueError(f"Date string '{date_string}' does not match any known format")
-
-
-class DcmPHIDetector:
-    def __init__(self) -> None:
-        self.model_name = "obi/deid_roberta_i2b2"
-        self.model = None
-        self.min_confidence = np.float32(0.6)
-
-        self._init_model()
-    
-    def _init_model(self):
-        self.model = pipeline("ner", model=self.model_name)
-
-    def entity_name(self, entityvalue: str):
-        return entityvalue[2:]
-
-    def process_enitity_val(self, entityvalue: str):
-        spacechar = 'Ġ'
-        if entityvalue[0] == spacechar:
-            entityvalue = entityvalue[1:]
-        entityvalue = entityvalue.replace(spacechar, ' ')
-        return entityvalue
-
-    def process_element_val(self, element):
-        elementval = ""
-        if str(element.value).strip() == "":
-            return elementval
-        
-        if element.VM > 1:
-            elementval = ', '.join([str(item) for item in element.value])
-        elif element.VM == 1:
-            elementval = str(element.repval)
-        elementval = elementval.replace("'", '')
-        if element.VR == 'PN':
-            elementval = elementval.replace("^", ' ')
-        return elementval.strip()
-    
-    def filter_outputs(self, outputs: list):
-        filtered = [o for o in outputs if o['score'] > self.min_confidence]
-        return filtered
-    
-    def process_outputs(self, outputs: list):
-        entities = []
-        entitytype = None
-        entitystart = -1
-        temp = ""
-        for idx, item in enumerate(outputs):
-            if idx == 0:
-                temp = item['word']
-                entitytype = self.entity_name(item['entity'])
-                entitystart = item['start']
-                continue
-            previtem = outputs[idx-1]
-            currententity = self.entity_name(item['entity'])
-            if (item['index'] == previtem['index'] + 1) and (currententity == entitytype):
-                temp += item['word']
-            else:
-                entities.append((self.process_enitity_val(temp), entitytype, entitystart))
-                temp = item['word']
-                entitytype = self.entity_name(item['entity'])
-                entitystart = item['start']
-
-        if temp != "":
-            entities.append((self.process_enitity_val(temp), entitytype, entitystart))
-        return entities
-
-    def detect_entities(self, text: str):
-        if text == "":
-            return []
-        
-        # dcmnote = f"{element.name}: {self.process_element_val(element)}"
-        outputs = self.model(text)
-        outputs = self.filter_outputs(outputs)
-        entities = self.process_outputs(outputs)
-        # for e in entities:
-        #     print(f"{e[1]}: {self.process_enitity_val(e[0])}")
-        return entities
-    
-    def detect_entities_from_element(self, element: pydicom.DataElement) -> list:
-        element_text = f"{element.name}: {self.process_element_val(element)}"
-        return self.detect_entities(element_text)
-    
-    def deidentified_element_val(self, element: pydicom.DataElement) -> Union[str, list[str]]:
-        if str(element.value).strip() == "":
-            return ""
-
-        element_text = f"{element.name}: {self.process_element_val(element)}"
-        entities = self.detect_entities(element_text)
-        if len(entities) == 0:
-            return element.value
-        
-        processed = element_text[:]
-        for e in entities:
-            target_substr = element_text[e[2]: (e[2]+len(e[0]))]
-            processed = processed.replace(target_substr, '')
-        
-        deidentified_val = processed.replace(f"{element.name}: ", '')
-
-        if element.VM > 1:
-            return deidentified_val.split(', ')
-        
-        return deidentified_val.strip()
-
-
 
 class DCMPS33Anonymizer:
     def __init__(self, phi_detector: DcmPHIDetector = None):
         super().__init__()
         self.uid_dict = {}
+        self.series_uid_dict = {}
         self.id_dict = {}
         self.history = {}
         self.shift_date_offset = SHIFT_DATE_OFFSET
+        self.uid_prefix = '1.2.826.0.1.3680043.8.498.'
 
         self.detector = phi_detector
 
@@ -267,10 +115,8 @@ class DCMPS33Anonymizer:
         """
         Lookup new UID in cached dictionary or create new one if none found
         """
-        from pydicom.uid import generate_uid
-
         if old_uid not in self.uid_dict:
-            self.uid_dict[old_uid] = generate_uid(None)
+            self.uid_dict[old_uid] = generate_uid(prefix=self.uid_prefix)
         return self.uid_dict.get(old_uid)
 
 
@@ -532,6 +378,10 @@ class DCMPS33Anonymizer:
                     action(dataset, tag)            
                 
                 if element:
+                    # check if Series Instance UID, then store the id in series id map
+                    if tag == (0x0020, 0x000E):
+                        self.series_uid_dict[earliervalue] = element.value
+
                     if earliervalue != element.value:
                         action_history[element.tag] = action.__name__
 
@@ -565,13 +415,6 @@ class DCMPS33Anonymizer:
     def anonymize(self, input_path: str, output_path: str, opt_history: dict = {}, custom_actions: dict = {}):
         self.history = opt_history
 
-        # anonymize(
-        #     input_path=str(input_path),
-        #     output_path=str(output_path),
-        #     anonymization_actions=custom_actions,
-        #     delete_private_tags=True,
-        # )
-
         simpledicomanonymizer.anonymize_dicom_file(
             in_file=str(input_path),
             out_file=str(output_path),
@@ -579,4 +422,4 @@ class DCMPS33Anonymizer:
             delete_private_tags=True,
         )
 
-        return self.uid_dict, self.id_dict, self.history
+        return self.history

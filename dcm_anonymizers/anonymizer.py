@@ -1,24 +1,13 @@
 import os
-import glob
-from pathlib import Path
 import tqdm
 import pydicom
+from pathlib import Path
 
 from dicomanonymizer.anonymizer import isDICOMType
 
-from dcm_anonymizers.ps_3_3 import DCMPS33Anonymizer, DcmPHIDetector, replace_with_value, format_action_dict
-
-
-DEID_DATASET_ROOT = '/home/r079a/Desktop/de-identification/dataset'
-SHIFT_DATE_OFFSET = 120
-
-def ensure_dir(path: Path):
-    return path.mkdir(parents=True, exist_ok=True)
-
-def list_all_files(target: str, format: str = '.dcm'):
-    targetdcm_path = f"{target}/*{format}"
-    return glob.glob(targetdcm_path)
-
+from .utils import ensure_dir, list_all_files
+from .phi_detectors import DcmPHIDetector
+from .ps_3_3 import DCMPS33Anonymizer, replace_with_value, format_action_dict
 
 class Anonymizer:
     def __init__(self, input_path: str, output_path: str) -> None:
@@ -26,7 +15,7 @@ class Anonymizer:
         self.output_path = output_path
         self.total_dcms = 0
         self.dcm_dirs = []
-        self.output_id_map = {}
+        self.series_props = {}
         self.anonymizer = None
 
         ensure_dir(self.output_path)
@@ -68,7 +57,7 @@ class Anonymizer:
 
             ensure_dir(output_path)
 
-            self.output_id_map[dir] = {
+            self.series_props[dir] = {
                 'patiend_id': patientid,
                 'anonymized_id': anonymized_id,
                 'output_path': str(output_path)
@@ -89,72 +78,44 @@ class Anonymizer:
         
         return patientid
     
-    def run_on_file(filepath: str):
+    def run_on_file(self, filepath: str, parentdir: str):
+
+        series_info = self.series_props[parentdir]
         
         patient_attrs_action = {
-            "(0x0010, 0x0010)": replace_with_value(['Pseudo-PHI-008']),
-            "(0x0010, 0x0020)": replace_with_value(['Pseudo-PHI-008']),
+            "(0x0010, 0x0010)": replace_with_value([series_info['anonymized_id']]),
+            "(0x0010, 0x0020)": replace_with_value([series_info['anonymized_id']]),
         }
 
         patient_attrs_action = format_action_dict(patient_attrs_action)
 
-        uid_map, id_map, history = anonymizer.anonymize(
-            input_path=str(sample_img_path),
-            output_path=str(sample_out_path),
+        self.anonymizer.id_dict.update({
+            series_info['patiend_id']: series_info['anonymized_id']
+        })
+
+        filename = os.path.basename(filepath)
+        output_file = f"{series_info['output_path']}/{filename}"
+
+        history = self.anonymizer.anonymize(
+            input_path=str(filepath),
+            output_path=str(output_file),
             custom_actions=patient_attrs_action,
         )
 
-        print(uid_map)
-        print(id_map)
-        print(history)
+        return history
 
     def run(self):        
         progress_bar = tqdm.tqdm(total=self.total_dcms)
-
         for idx, dir in enumerate(self.dcm_dirs):
             dcms = list_all_files(dir)
             for dcm in dcms:
-                print(dcm)
+                _ = self.run_on_file(dcm, dir)
                 progress_bar.update(1)
 
             if idx > 2:
                 break
+        
+        print(self.anonymizer.uid_dict)
+        print(self.anonymizer.id_dict)
+        print(self.anonymizer.series_uid_dict)
             
-
-
-if __name__ == "__main__":
-    sample_img_path = Path(DEID_DATASET_ROOT, 'images/manifest-1617826555824/Pseudo-PHI-DICOM-Data/6451050561/07-28-1961-NA-NA-56598/PET IR CTAC WB-48918/1-001.dcm')
-    sample_out_path = Path('/home/r079a/Desktop/de-identification/dicom-output', '6451050561/07-28-1961-NA-NA-56598/PET IR CTAC WB-48918')
-    
-    ensure_dir(sample_out_path)
-
-    anonymizer = Anonymizer(
-        input_path=Path(DEID_DATASET_ROOT, 'images/manifest-1617826555824/Pseudo-PHI-DICOM-Data'),
-        output_path=Path(DEID_DATASET_ROOT, 'anonymizer-output/Pseudo-PHI-DICOM-Data')
-    )
-
-    anonymizer.run()
-
-    # phi_detector = DcmPHIDetector()
-
-    # anonymizer = DCMPS33Anonymizer(phi_detector=phi_detector)
-    # # patient_attrs_action = {}
-
-    # patient_attrs_action = {
-    #     "(0x0010, 0x0010)": replace_with_value(['Pseudo-PHI-008']),
-    #     "(0x0010, 0x0020)": replace_with_value(['Pseudo-PHI-008']),
-    # }
-
-    # patient_attrs_action = format_action_dict(patient_attrs_action)
-
-    # uid_map, id_map, history = anonymizer.anonymize(
-    #     input_path=str(sample_img_path),
-    #     output_path=str(sample_out_path),
-    #     custom_actions=patient_attrs_action,
-    # )
-
-    # print(uid_map)
-
-    # print(id_map)
-
-    # print(history)
