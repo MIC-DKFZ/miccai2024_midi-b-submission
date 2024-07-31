@@ -2,6 +2,7 @@ import os
 import tqdm
 import pydicom
 from pathlib import Path
+from datetime import datetime
 
 from dicomanonymizer.anonymizer import isDICOMType
 
@@ -45,6 +46,9 @@ class Anonymizer:
 
     
     def create_output_dirs(self):
+        patient_id_map = {}
+        count = 1
+
         for idx, dir in enumerate(self.dcm_dirs):
             
             patientid = self.get_patient_id_from_series_path(dir)           
@@ -52,9 +56,15 @@ class Anonymizer:
             targetdcm_dir = dir.removeprefix(str(self.input_path))
             targetdcm_dir = targetdcm_dir.removeprefix("/")
             output_path = Path(self.output_path, targetdcm_dir)
-            anonymized_id = f"Pseudo-PHI-{str(idx+1).rjust(3, '0')}"
+            anonymized_id = f"Pseudo-PHI-{str(count).rjust(3, '0')}"
 
             if patientid != "":
+                if patientid in patient_id_map:
+                    anonymized_id = patient_id_map[patientid]
+                else:
+                    patient_id_map[patientid] = anonymized_id
+                    count += 1
+
                 output_path = Path(str(output_path).replace(patientid, anonymized_id))
 
 
@@ -108,17 +118,20 @@ class Anonymizer:
         return history, output_file
     
     def anonymize_image_data_on_file(self, filepath: str, replace: bool = True):
-        # series_info = self.series_props[parentdir]
 
-        # filename = os.path.basename(filepath)
-        # output_file = f"{series_info['output_path']}/{filename}"
+        output_file = filepath
+        if not replace:
+            path = Path(filepath)
+            parent_path = path.parent.absolute()
+
+            filename = path.stem
+            suffix = datetime.now().strftime("%d%m%Y_%H%M%S")
+            output_file = str( parent_path / f"{filename}_{suffix}.dcm")
+
         self.img_anonymizer.anonymize_dicom_file(
             dcm_file=filepath,
-            out_file=filepath,
+            out_file=output_file,
         )
-
-
-
 
     def run(self):        
         progress_bar = tqdm.tqdm(total=self.total_dcms)
@@ -126,10 +139,13 @@ class Anonymizer:
             dcms = list_all_files(dir)
             for dcm in dcms:
                 _, outfile = self.anonymize_metadata_on_file(dcm, dir)
-                self.anonymize_image_data_on_file(outfile)
+                self.anonymize_image_data_on_file(outfile, replace=True)
                 progress_bar.update(1)
+            
+            # if idx > 1:
+            #     break
         
-        print(self.anonymizer.uid_dict)
+        # print(self.anonymizer.uid_dict)
         print(self.anonymizer.id_dict)
         print(self.anonymizer.series_uid_dict)
             

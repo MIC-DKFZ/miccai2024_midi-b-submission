@@ -380,7 +380,11 @@ class DCMPS33Anonymizer:
                 if element:
                     # check if Series Instance UID, then store the id in series id map
                     if tag == (0x0020, 0x000E):
-                        self.series_uid_dict[earliervalue] = element.value
+                        if earliervalue in self.series_uid_dict:
+                            earlieruid = self.series_uid_dict.get(earliervalue)
+                            assert earlieruid == element.value
+                        else:
+                            self.series_uid_dict[earliervalue] = element.value
 
                     if earliervalue != element.value:
                         action_history[element.tag] = action.__name__

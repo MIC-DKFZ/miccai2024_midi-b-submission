@@ -57,6 +57,7 @@ class DCMImageAnonymizer:
         
         extracted = self.extract_from_pixel_array(normalized_array)
         detected_polygons = []
+        updated = False
         if extracted[0] and len(extracted[0]) > 0:
             for e in extracted[0]:
                 bbox = e[0]
@@ -70,16 +71,22 @@ class DCMImageAnonymizer:
                     if len(extracted_text) <= 2:
                         continue
                     detected_polygons.append(bbox)
-
+            
+            if len(detected_polygons) > 0:
                 img = normalized_array.copy()        
                 drawn_img = self.draw_filled_polygons(img, detected_polygons)
 
                 ds.PixelData = drawn_img
+                updated = True
+        
+        return updated
 
     def anonymize_dicom_file(self, dcm_file: str, out_file: str):
         dataset = pydicom.dcmread(dcm_file)
 
-        self.anonymize_dicom_image_data(dataset)
+        changed = self.anonymize_dicom_image_data(dataset)
+        if changed:
+            print(f"Dicom image updated: {dcm_file}")
 
         # Store modified image
         dataset.save_as(out_file)
