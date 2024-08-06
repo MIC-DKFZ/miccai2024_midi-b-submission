@@ -2,5 +2,8 @@
 __pycache__
 
 *.dcm
-*.toml
 *.zip
+# data
+*.dcm
+data/raw
+data/deid

@@ -1,5 +1,9 @@
 # MIDI-B Challange DKFZ
 
+## Download the data
+
+https://wiki.cancerimagingarchive.net/pages/viewpage.action?pageId=80969777
+
 
 ### Install dependecies
 install the dependency packages using poetry
