@@ -3,13 +3,15 @@ import tqdm
 import pydicom
 from pathlib import Path
 from datetime import datetime
+import logging
+logger = logging.getLogger(__name__)
 
 from dicomanonymizer.anonymizer import isDICOMType
 
-from .utils import ensure_dir, list_all_files
-from .phi_detectors import DcmPHIDetector
-from .img_anonymizers import DCMImageAnonymizer
-from .ps_3_3 import DCMPS33Anonymizer, replace_with_value, format_action_dict
+from dcm_anonymizers.utils import ensure_dir, list_all_files
+from dcm_anonymizers.phi_detectors import DcmPHIDetector
+from dcm_anonymizers.img_anonymizers import DCMImageAnonymizer
+from dcm_anonymizers.ps_3_3 import DCMPS33Anonymizer, replace_with_value, format_action_dict
 
 class Anonymizer:
     def __init__(self, input_path: str, output_path: str) -> None:
@@ -91,8 +93,7 @@ class Anonymizer:
         
         return patientid
     
-    def anonymize_metadata_on_file(self, filepath: str, parentdir: str):
-
+    def create_patient_attrs_action(self, parentdir: str):
         series_info = self.series_props[parentdir]
         
         patient_attrs_action = {
@@ -105,6 +106,16 @@ class Anonymizer:
         self.anonymizer.id_dict.update({
             series_info['patiend_id']: series_info['anonymized_id']
         })
+        
+        return patient_attrs_action
+    
+    
+    def anonymize_metadata_on_file(self, filepath: str, parentdir: str, patient_attrs_action: dict = None):
+
+        if not patient_attrs_action:
+            patient_attrs_action = self.create_patient_attrs_action(parentdir)
+        
+        series_info = self.series_props[parentdir]
 
         filename = os.path.basename(filepath)
         output_file = f"{series_info['output_path']}/{filename}"
@@ -136,10 +147,14 @@ class Anonymizer:
     def run(self):        
         progress_bar = tqdm.tqdm(total=self.total_dcms)
         for idx, dir in enumerate(self.dcm_dirs):
+            
+            patient_attrs_action = self.create_patient_attrs_action(dir)
+            
             dcms = list_all_files(dir)
             for dcm in dcms:
-                _, outfile = self.anonymize_metadata_on_file(dcm, dir)
-                self.anonymize_image_data_on_file(outfile, replace=True)
+                history, outfile = self.anonymize_metadata_on_file(dcm, dir, patient_attrs_action)
+                print(f"{history}")
+                #self.anonymize_image_data_on_file(outfile, replace=True)
                 progress_bar.update(1)
             
             # if idx > 1:
@@ -149,3 +164,12 @@ class Anonymizer:
         print(self.anonymizer.id_dict)
         print(self.anonymizer.series_uid_dict)
             
+            
+DEID_DATASET_ROOT = 'C:/src/midi_b_challange'
+
+anonymizer = Anonymizer(
+    input_path=Path(DEID_DATASET_ROOT, 'data/validation_data/input_data'),
+    output_path=Path(DEID_DATASET_ROOT, 'anonymizer-output/Pseudo-PHI-DICOM-Data')
+)
+
+anonymizer.run()
