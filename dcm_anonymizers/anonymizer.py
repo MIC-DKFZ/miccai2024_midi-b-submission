@@ -15,16 +15,21 @@ from dcm_anonymizers.img_anonymizers import DCMImageAnonymizer
 from dcm_anonymizers.ps_3_3 import DCMPS33Anonymizer, replace_with_value, format_action_dict
 
 class Anonymizer:
-    def __init__(self, input_path: str, output_path: str) -> None:
+    def __init__(self, input_path: str, output_path: str, preserve_dir_struct: bool = False) -> None:
+        output_path = Path(output_path)
+
         self.input_path = input_path
-        self.output_path = output_path
+        self.data_output_dir = output_path / 'data'
+        self.mappings_output_dir = output_path / 'mappings'
         self.total_dcms = 0
         self.dcm_dirs = []
         self.series_props = {}
         self.anonymizer = None
         self.img_anonymizer = None
+        self.preserve_dir_struct = preserve_dir_struct
 
-        ensure_dir(self.output_path)
+        ensure_dir(self.data_output_dir)
+        ensure_dir(self.mappings_output_dir)
 
         self.initialize()
         self.create_output_dirs()
@@ -59,7 +64,7 @@ class Anonymizer:
             
             targetdcm_dir = dir.removeprefix(str(self.input_path))
             targetdcm_dir = targetdcm_dir.removeprefix("/")
-            output_path = Path(str(self.output_path) + targetdcm_dir)
+            output_path = Path(str(self.data_output_dir), targetdcm_dir)
             anonymized_id = f"Pseudo-PHI-{str(count).rjust(3, '0')}"
             anonymized_study_uid = self.anonymizer.get_UID(studyuid)
             anonymized_series_uid = self.anonymizer.get_UID(seriesuid)
@@ -70,9 +75,10 @@ class Anonymizer:
                 else:
                     patient_id_map[patientid] = anonymized_id
                     count += 1
-
+            if self.preserve_dir_struct:
                 output_path = Path(str(output_path).replace(patientid, anonymized_id))
-
+            else:
+                output_path = Path(str(self.data_output_dir), anonymized_id, anonymized_study_uid, anonymized_series_uid)
 
             ensure_dir(output_path)
             
@@ -182,7 +188,7 @@ class Anonymizer:
             series_prop = self.series_props[series_path]
             series_uid = series_prop['series_uid']
             output_path = series_prop['output_path']
-            output_path = output_path.replace(str(self.output_path), '.')
+            output_path = output_path.replace(str(self.data_output_dir), '.')
             series_output_map[series_uid] = output_path
         return series_output_map
 
@@ -191,7 +197,7 @@ class Anonymizer:
             fields = ['id_old', 'id_new']
         
         data = [{fields[0]: key, fields[1]: val} for key, val in id_map.items()]
-        csvfile = os.path.join(self.output_path, f"{filename}.csv")
+        csvfile = os.path.join(self.mappings_output_dir, f"{filename}.csv")
 
         with open(csvfile, 'w', newline='') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=fields)
