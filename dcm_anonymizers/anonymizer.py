@@ -74,6 +74,8 @@ class Anonymizer:
             ensure_dir(output_path)
             
             already_anonymized_dcms = list_all_files(output_path)
+            if len(already_anonymized_dcms) > 0:
+                logger.debug(f"Already anonymized dicoms in the following directory: {output_path}, {len(already_anonymized_dcms)}")
             self.total_dcms -= len(already_anonymized_dcms)
 
             self.series_props[dir] = {

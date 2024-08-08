@@ -20,6 +20,10 @@ from dicomanonymizer.format_tag import tag_to_hex_strings
 from dcm_anonymizers.utils import int_tuple_to_basetag, get_hashid, parse_date_string
 from dcm_anonymizers.phi_detectors import DcmPHIDetector
 
+
+import logging
+logger = logging.getLogger(__name__)
+
 PS_3_3_ATTRS_JSON = 'dcm_anonymizers/ps3.3_profile_attrs.json'
 SHIFT_DATE_OFFSET = 120
 
@@ -56,7 +60,7 @@ def replace_with_value(options: Union[list, dict]):
             try:
                 value = options["value"]
             except KeyError as e:
-                raise ValueError(f"Missing field in tag dictionary {tag}: {e.args[0]}")
+                logging.warning(f"Missing field in tag dictionary {tag}: {e.args[0]}")
         else:
             value = options[0]
 
@@ -227,8 +231,8 @@ class DCMPS33Anonymizer:
                     else:
                         replace_element(sub_element)
         else:
-            raise NotImplementedError(
-                "Not anonymized. VR {} not yet implemented.".format(element.VR)
+            logger.warning(
+                "Element {}={} not anonymized. VR {} not yet implemented.".format(element.name, element.value, element.VR)
             )
         
 
@@ -272,8 +276,8 @@ class DCMPS33Anonymizer:
                 for sub_element in sub_dataset.elements():
                     self.custom_empty_element(sub_element)
         else:
-            raise NotImplementedError(
-                "Not anonymized. VR {} not yet implemented.".format(element.VR)
+            logger.warning(
+                "Element {}={} not anonymized. VR {} not yet implemented.".format(element.name, element.value, element.VR)
             )
 
 
@@ -367,7 +371,7 @@ class DCMPS33Anonymizer:
                     if element:
                         earliervalue = element.value
                 except KeyError:
-                    print("Cannot get element from tag: ", tag_to_hex_strings(tag))
+                    logging.warning("Cannot get element from tag: ", tag_to_hex_strings(tag))
 
                 if tag[0] == 0x0002:
                     if not hasattr(dataset, "file_meta"):
