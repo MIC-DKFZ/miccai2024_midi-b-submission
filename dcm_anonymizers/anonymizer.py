@@ -57,7 +57,7 @@ class Anonymizer:
             
             targetdcm_dir = dir.removeprefix(str(self.input_path))
             targetdcm_dir = targetdcm_dir.removeprefix("/")
-            output_path = Path(self.output_path, targetdcm_dir)
+            output_path = Path(str(self.output_path) + targetdcm_dir)
             anonymized_id = f"Pseudo-PHI-{str(count).rjust(3, '0')}"
 
             if patientid != "":
