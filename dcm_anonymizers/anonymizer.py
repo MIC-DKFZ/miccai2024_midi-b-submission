@@ -1,5 +1,6 @@
 import os
 import tqdm
+import csv
 import pydicom
 from pathlib import Path
 from datetime import datetime
@@ -54,12 +55,14 @@ class Anonymizer:
 
         for idx, dir in enumerate(self.dcm_dirs):
             
-            patientid = self.get_patient_id_from_series_path(dir)           
+            patientid, studyuid, seriesuid = self.get_series_infos_from_file(dir)           
             
             targetdcm_dir = dir.removeprefix(str(self.input_path))
             targetdcm_dir = targetdcm_dir.removeprefix("/")
             output_path = Path(str(self.output_path) + targetdcm_dir)
             anonymized_id = f"Pseudo-PHI-{str(count).rjust(3, '0')}"
+            anonymized_study_uid = self.anonymizer.get_UID(studyuid)
+            anonymized_series_uid = self.anonymizer.get_UID(seriesuid)
 
             if patientid != "":
                 if patientid in patient_id_map:
@@ -79,25 +82,41 @@ class Anonymizer:
             self.total_dcms -= len(already_anonymized_dcms)
 
             self.series_props[dir] = {
-                'patiend_id': patientid,
+                'series_uid': seriesuid,
+                'patient_id': patientid,
                 'anonymized_id': anonymized_id,
                 'output_path': str(output_path)
             }    
 
-    def get_patient_id_from_series_path(self, series_path: str):
+    def get_series_infos_from_file(self, series_filepath: str):
         patientid = ""
-        dcms = list_all_files(series_path)
+        studyuid = ""
+        seriesuid = ""
+        dcms = list_all_files(series_filepath)
 
         if isDICOMType(dcms[0]):
             ds = pydicom.read_file(dcms[0])
+
             patietid_tag = (0x0010, 0x0020)
-            element = ds.get(patietid_tag)
-            if element:
-                patientid = element.value
+            studyuid_tag = (0x0020, 0x000D)
+            seriesuid_tag = (0x0020, 0x000E)
+
+            patientid_element = ds.get(patietid_tag)
+            if patientid_element:
+                patientid = patientid_element.value
+            
+            studyuid_element = ds.get(studyuid_tag)
+            if studyuid_element:
+                studyuid = studyuid_element.value
+
+            seriesuid_element = ds.get(seriesuid_tag)
+            if seriesuid_element:
+                seriesuid = seriesuid_element.value
+            
         else:
             raise Warning(f"Dicoms in the following directory might be corrupted, hence can not be anonymized. {dir}")
         
-        return patientid
+        return patientid, studyuid, seriesuid
     
     def create_patient_attrs_action(self, parentdir: str):
         series_info = self.series_props[parentdir]
@@ -110,7 +129,7 @@ class Anonymizer:
         patient_attrs_action = format_action_dict(patient_attrs_action)
 
         self.anonymizer.id_dict.update({
-            series_info['patiend_id']: series_info['anonymized_id']
+            series_info['patient_id']: series_info['anonymized_id']
         })
         
         return patient_attrs_action
@@ -157,6 +176,29 @@ class Anonymizer:
             out_file=output_file,
         )
 
+    def get_series_output_path_map(self):
+        series_output_map = {}
+        for series_path in self.series_props:
+            series_prop = self.series_props[series_path]
+            series_uid = series_prop['series_uid']
+            output_path = series_prop['output_path']
+            output_path = output_path.replace(str(self.output_path), '.')
+            series_output_map[series_uid] = output_path
+        return series_output_map
+
+    def export_csv_from_id_map(self, id_map: dict, filename: str, fields: list = []):
+        if len(fields) == 0:
+            fields = ['id_old', 'id_new']
+        
+        data = [{fields[0]: key, fields[1]: val} for key, val in id_map.items()]
+        csvfile = os.path.join(self.output_path, f"{filename}.csv")
+
+        with open(csvfile, 'w', newline='') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=fields)
+            writer.writeheader()
+            writer.writerows(data)
+
+
     def run(self):        
         print(f"Total dicoms to be anonymized: {self.total_dcms}")
         progress_bar = tqdm.tqdm(total=self.total_dcms)
@@ -172,15 +214,14 @@ class Anonymizer:
                     #self.anonymize_image_data_on_file(outfile, replace=True)
                     progress_bar.update(1)
             
-        print(self.anonymizer.id_dict)
-        print(self.anonymizer.series_uid_dict)
         progress_bar.close()
-            
-DEID_DATASET_ROOT = 'C:/src/midi_b_challange'
+        
+        series_output_map = self.get_series_output_path_map()
+       
+        self.export_csv_from_id_map(self.anonymizer.id_dict, filename="patient_id_mapping")
+        self.export_csv_from_id_map(self.anonymizer.uid_dict, filename="uid_mapping")
+        self.export_csv_from_id_map(series_output_map, filename='path_mapping', fields=['id_old', 'path'])
 
-anonymizer = Anonymizer(
-    input_path=Path(DEID_DATASET_ROOT, 'data/validation_data/input_data'),
-    output_path=Path(DEID_DATASET_ROOT, 'anonymizer-output/Pseudo-PHI-DICOM-Data')
-)
-
-anonymizer.run()
+        print(self.img_anonymizer.change_log)
+        
+        

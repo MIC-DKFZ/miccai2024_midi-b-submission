@@ -1,3 +1,4 @@
+import os
 import pydicom
 from paddleocr import PaddleOCR
 import cv2
@@ -10,6 +11,7 @@ class DCMImageAnonymizer:
     def __init__(self,  phi_detector: DcmPHIDetector, use_gpu: bool = True) -> None:
         self.ocr = None
         self.detector = phi_detector
+        self.change_log = {} # series_id: []
 
         self._init_ocr(use_gpu)
         
@@ -73,7 +75,7 @@ class DCMImageAnonymizer:
                     detected_polygons.append(bbox)
             
             if len(detected_polygons) > 0:
-                img = normalized_array.copy()        
+                img = ds.pixel_array.copy()        
                 drawn_img = self.draw_filled_polygons(img, detected_polygons)
 
                 ds.PixelData = drawn_img
@@ -83,10 +85,19 @@ class DCMImageAnonymizer:
 
     def anonymize_dicom_file(self, dcm_file: str, out_file: str):
         dataset = pydicom.dcmread(dcm_file)
+        seriesuid_tag = (0x0020, 0x000E)
 
         changed = self.anonymize_dicom_image_data(dataset)
         if changed:
-            print(f"Dicom image updated: {dcm_file}")
+            # print(f"Dicom image updated: {dcm_file}")
+            seriesuid_element = dataset.get(seriesuid_tag)
+            seriesuid = seriesuid_element.value
+            basename = os.path.basename(dcm_file)
+            if seriesuid in self.change_log:
+                self.change_log[seriesuid].append(basename)
+            else:
+                self.change_log[seriesuid] = [basename]
+
 
         # Store modified image
         dataset.save_as(out_file)

@@ -70,6 +70,10 @@ class DcmPHIDetector:
         return entities
 
     def detect_entities(self, text: str):
+        """
+        input -> Scott Community Hospital
+        outputs -> (Scott Community Hospital, hospital)
+        """
         if text == "":
             return []
         
@@ -86,8 +90,9 @@ class DcmPHIDetector:
     def deidentified_element_val(self, element: pydicom.DataElement) -> Union[str, list[str]]:
         if str(element.value).strip() == "":
             return ""
-
-        element_text = f"{element.name}: {self.process_element_val(element)}"
+        
+        processed_element_val = self.process_element_val(element)
+        element_text = f"{element.name}: {processed_element_val}"
         entities = self.detect_entities(element_text)
         if len(entities) == 0:
             return element.value
@@ -101,5 +106,10 @@ class DcmPHIDetector:
 
         if element.VM > 1:
             return deidentified_val.split(', ')
+        
+        remaining_value_prcnt = len(deidentified_val) / len(processed_element_val)
+        # return empty string in case of value almost stripped by anonymizer
+        if remaining_value_prcnt <= 0.2:
+            return ""
         
         return deidentified_val.strip()
