@@ -35,11 +35,12 @@ class Anonymizer:
 
         for dir in alldirs:
             dcms = list_all_files(dir)
+            
             if len(dcms) > 0:
                 self.total_dcms += len(dcms)
                 self.dcm_dirs.append(dir)
         
-        print(f"Total dicoms to be anonymized: {self.total_dcms}, Total series to be anonymized: {len(self.dcm_dirs)}")
+        print(f"Total dicoms in the input data: {self.total_dcms}, Total series in the input data: {len(self.dcm_dirs)}")
 
         # initialize model
         phi_detector = DcmPHIDetector()
@@ -71,6 +72,9 @@ class Anonymizer:
 
 
             ensure_dir(output_path)
+            
+            already_anonymized_dcms = list_all_files(output_path)
+            self.total_dcms -= len(already_anonymized_dcms)
 
             self.series_props[dir] = {
                 'patiend_id': patientid,
@@ -109,6 +113,13 @@ class Anonymizer:
         
         return patient_attrs_action
     
+    def anonymized_file_exists(self, filepath: str, parentdir: str):
+        series_info = self.series_props[parentdir]
+        filename = os.path.basename(filepath)
+        output_file = f"{series_info['output_path']}/{filename}"
+
+        return os.path.exists(output_file)
+    
     
     def anonymize_metadata_on_file(self, filepath: str, parentdir: str, patient_attrs_action: dict = None):
 
@@ -145,6 +156,7 @@ class Anonymizer:
         )
 
     def run(self):        
+        print(f"Total dicoms to be anonymized: {self.total_dcms}")
         progress_bar = tqdm.tqdm(total=self.total_dcms)
         for idx, dir in enumerate(self.dcm_dirs):
             
@@ -152,18 +164,15 @@ class Anonymizer:
             
             dcms = list_all_files(dir)
             for dcm in dcms:
-                history, outfile = self.anonymize_metadata_on_file(dcm, dir, patient_attrs_action)
-                print(f"{history}")
-                #self.anonymize_image_data_on_file(outfile, replace=True)
-                progress_bar.update(1)
+                if not self.anonymized_file_exists(dcm, dir):
+                    history, outfile = self.anonymize_metadata_on_file(dcm, dir, patient_attrs_action)
+                    logger.debug(f"{history}")
+                    #self.anonymize_image_data_on_file(outfile, replace=True)
+                    progress_bar.update(1)
             
-            # if idx > 1:
-            #     break
-        
-        # print(self.anonymizer.uid_dict)
         print(self.anonymizer.id_dict)
         print(self.anonymizer.series_uid_dict)
-            
+        progress_bar.close()
             
 DEID_DATASET_ROOT = 'C:/src/midi_b_challange'
 
