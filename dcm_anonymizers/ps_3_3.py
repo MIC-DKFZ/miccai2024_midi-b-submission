@@ -22,7 +22,6 @@ from dcm_anonymizers.phi_detectors import DcmPHIDetector
 
 
 import logging
-logger = logging.getLogger(__name__)
 
 PS_3_3_ATTRS_JSON = 'dcm_anonymizers/ps3.3_profile_attrs.json'
 SHIFT_DATE_OFFSET = 120
@@ -80,11 +79,14 @@ class DCMPS33Anonymizer:
         self.history = {}
         self.shift_date_offset = SHIFT_DATE_OFFSET
         self.uid_prefix = '1.2.826.0.1.3680043.8.498.'
-
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.DEBUG)
+        
         self.detector = phi_detector
 
         self._override_simpledicomanonymizer()
 
+        self.logger.debug("PS3.3 init")
     
     def _override_simpledicomanonymizer(self):
         simpledicomanonymizer.dictionary = self.uid_dict
@@ -231,7 +233,7 @@ class DCMPS33Anonymizer:
                     else:
                         replace_element(sub_element)
         else:
-            logger.warning(
+            self.logger.warning(
                 "Element {}={} not anonymized. VR {} not yet implemented.".format(element.name, element.value, element.VR)
             )
         
@@ -276,7 +278,7 @@ class DCMPS33Anonymizer:
                 for sub_element in sub_dataset.elements():
                     self.custom_empty_element(sub_element)
         else:
-            logger.warning(
+            self.logger.warning(
                 "Element {}={} not anonymized. VR {} not yet implemented.".format(element.name, element.value, element.VR)
             )
 

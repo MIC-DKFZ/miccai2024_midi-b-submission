@@ -5,7 +5,18 @@ import pydicom
 from pathlib import Path
 from datetime import datetime
 import logging
-logger = logging.getLogger(__name__)
+
+timestamp = datetime.now().strftime("%Y_%m_%d_%I_%M%p")
+logging.basicConfig(
+    format='%(name)s :: %(levelname)-8s :: %(message)s',
+    level=logging.DEBUG,
+    handlers=[
+        logging.FileHandler(filename="debug_{}.log".format(timestamp), mode = "a"),
+        logging.StreamHandler()
+    ],
+    force=True
+)
+
 
 from dicomanonymizer.anonymizer import isDICOMType
 
@@ -27,6 +38,8 @@ class Anonymizer:
         self.anonymizer = None
         self.img_anonymizer = None
         self.preserve_dir_struct = preserve_dir_struct
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.DEBUG)
 
         ensure_dir(self.data_output_dir)
         ensure_dir(self.mappings_output_dir)
@@ -84,7 +97,7 @@ class Anonymizer:
             
             already_anonymized_dcms = list_all_files(output_path)
             if len(already_anonymized_dcms) > 0:
-                logger.debug(f"Already anonymized dicoms in the following directory: {output_path}, {len(already_anonymized_dcms)}")
+                self.logger.debug(f"Already anonymized dicoms in the following directory: {output_path}, {len(already_anonymized_dcms)}")
             self.total_dcms -= len(already_anonymized_dcms)
 
             self.series_props[dir] = {
@@ -215,8 +228,8 @@ class Anonymizer:
             dcms = list_all_files(dir)
             for dcm in dcms:
                 if not self.anonymized_file_exists(dcm, dir):
-                    history, outfile = self.anonymize_metadata_on_file(dcm, dir, patient_attrs_action)
-                    logger.debug(f"{history}")
+                    #history, outfile = self.anonymize_metadata_on_file(dcm, dir, patient_attrs_action)
+                    #self.logger.debug(f"{history}")
                     #self.anonymize_image_data_on_file(outfile, replace=True)
                     progress_bar.update(1)
             
@@ -227,7 +240,6 @@ class Anonymizer:
         self.export_csv_from_id_map(self.anonymizer.id_dict, filename="patient_id_mapping")
         self.export_csv_from_id_map(self.anonymizer.uid_dict, filename="uid_mapping")
         self.export_csv_from_id_map(series_output_map, filename='path_mapping', fields=['id_old', 'path'])
-
+        self.logger.info(self.img_anonymizer.change_log)
         print(self.img_anonymizer.change_log)
-        
         
