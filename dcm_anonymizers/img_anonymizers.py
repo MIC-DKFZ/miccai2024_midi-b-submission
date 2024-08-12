@@ -3,6 +3,7 @@ import pydicom
 from paddleocr import PaddleOCR
 import cv2
 import numpy as np
+import logging
 
 from dcm_anonymizers.phi_detectors import DcmPHIDetector
 
@@ -12,6 +13,8 @@ class DCMImageAnonymizer:
         self.ocr = None
         self.detector = phi_detector
         self.change_log = {} # series_id: []
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.DEBUG)
 
         self._init_ocr(use_gpu)
         
@@ -54,9 +57,28 @@ class DCMImageAnonymizer:
         return img
 
     
-    def anonymize_dicom_image_data(self, ds: pydicom.Dataset):        
-        normalized_array = self.normalize_pixel_arr(ds.pixel_array)
+    def anonymize_dicom_image_data(self, ds: pydicom.Dataset): 
+        try:
+            pixel_shape = ds.pixel_array.shape
+        except AttributeError as e:
+            self.logger.warning(
+                str(e)
+            )
+            return False
         
+        if len(pixel_shape) > 3:
+            self.logger.warning(
+                "DICOM pixel array found with shape {} of Modality {}".format(str(ds.pixel_array.shape), ds.Modality)
+            )
+            return False
+        elif len(pixel_shape) == 3 and pixel_shape[2] != 3:
+            self.logger.warning(
+                "DICOM pixel array found with shape {} of Modality {}".format(str(ds.pixel_array.shape), ds.Modality)
+            )
+            return False
+
+        normalized_array = self.normalize_pixel_arr(ds.pixel_array)
+
         extracted = self.extract_from_pixel_array(normalized_array)
         detected_polygons = []
         updated = False
@@ -99,5 +121,5 @@ class DCMImageAnonymizer:
                 self.change_log[seriesuid] = [basename]
 
 
-        # Store modified image
-        dataset.save_as(out_file)
+            # Store modified image
+            dataset.save_as(out_file)

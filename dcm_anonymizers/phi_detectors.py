@@ -39,6 +39,10 @@ class DcmPHIDetector:
         if element.VR == 'PN':
             elementval = elementval.replace("^", ' ')
         return elementval.strip()
+
+    def processed_element_name(self, element_name: str):
+        element_name = element_name.strip()
+        return element_name.lstrip("[").rstrip("]") 
     
     def filter_outputs(self, outputs: list):
         filtered = [o for o in outputs if o['score'] > self.min_confidence]
@@ -84,7 +88,7 @@ class DcmPHIDetector:
         return entities
     
     def detect_entities_from_element(self, element: pydicom.DataElement) -> list:
-        element_text = f"{element.name}: {self.process_element_val(element)}"
+        element_text = f"{self.processed_element_name(element.name)}: {self.process_element_val(element)}"
         return self.detect_entities(element_text)
     
     def deidentified_element_val(self, element: pydicom.DataElement) -> Union[str, list[str]]:
@@ -92,7 +96,7 @@ class DcmPHIDetector:
             return ""
         
         processed_element_val = self.process_element_val(element)
-        element_text = f"{element.name}: {processed_element_val}"
+        element_text = f"{self.processed_element_name(element.name)}: {processed_element_val}"
         entities = self.detect_entities(element_text)
         if len(entities) == 0:
             return element.value
@@ -102,7 +106,7 @@ class DcmPHIDetector:
             target_substr = element_text[e[2]: (e[2]+len(e[0]))]
             processed = processed.replace(target_substr, '')
         
-        deidentified_val = processed.replace(f"{element.name}: ", '')
+        deidentified_val = processed.replace(f"{self.processed_element_name(element.name)}: ", '')
 
         if element.VM > 1:
             return deidentified_val.split(', ')

@@ -203,6 +203,7 @@ class DCMPS33Anonymizer:
 
         See https://laurelbridge.com/pdf/Dicom-Anonymization-Conformance-Statement.pdf
         """
+        # print(element.name, element.VR, element.value)
         if element.VR in ("LO", "LT", "SH", "PN", "CS", "ST", "UT"):
             # print(element.name, element.VR, element.value)
             # element.value = "ANONYMIZED"  # CS VR accepts only uppercase characters
@@ -210,7 +211,7 @@ class DCMPS33Anonymizer:
                 element.value = self.detector.deidentified_element_val(element)
         elif element.VR == "UI":
             replace_element_UID(element)
-        elif element.VR in ("DS", "IS"):
+        elif element.VR in ("DS", "IS"):            
             element.value = "0"
         elif element.VR in ("FD", "FL", "SS", "US", "SL", "UL"):
             element.value = 0
@@ -228,10 +229,10 @@ class DCMPS33Anonymizer:
                         # RawDataElement is a NamedTuple, so cannot set its value attribute.
                         # Convert it to a DataElement, replace value, and set it back.
                         e2 = pydicom.dataelem.DataElement_from_raw(sub_element)
-                        replace_element(e2)
+                        self.custom_replace_element(e2)
                         sub_dataset.add(e2)
                     else:
-                        replace_element(sub_element)
+                        self.custom_replace_element(sub_element)
         else:
             self.logger.warning(
                 "Element {}={} not anonymized. VR {} not yet implemented.".format(element.name, element.value, element.VR)

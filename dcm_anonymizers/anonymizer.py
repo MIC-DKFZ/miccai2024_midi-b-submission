@@ -88,9 +88,10 @@ class Anonymizer:
                 else:
                     patient_id_map[patientid] = anonymized_id
                     count += 1
-            if self.preserve_dir_struct:
-                output_path = Path(str(output_path).replace(patientid, anonymized_id))
-            else:
+
+                    output_path = Path(str(output_path).replace(patientid, anonymized_id))
+
+            if not self.preserve_dir_struct:
                 output_path = Path(str(self.data_output_dir), anonymized_id, anonymized_study_uid, anonymized_series_uid)
 
             ensure_dir(output_path)
@@ -228,9 +229,9 @@ class Anonymizer:
             dcms = list_all_files(dir)
             for dcm in dcms:
                 if not self.anonymized_file_exists(dcm, dir):
-                    #history, outfile = self.anonymize_metadata_on_file(dcm, dir, patient_attrs_action)
+                    history, outfile = self.anonymize_metadata_on_file(dcm, dir, patient_attrs_action)
                     #self.logger.debug(f"{history}")
-                    #self.anonymize_image_data_on_file(outfile, replace=True)
+                    self.anonymize_image_data_on_file(dcm, replace=False)
                     progress_bar.update(1)
             
         progress_bar.close()
