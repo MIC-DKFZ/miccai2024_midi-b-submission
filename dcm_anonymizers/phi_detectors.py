@@ -160,7 +160,9 @@ class DcmPHIDetector:
         return element_target
     
     def deid_element_values_from_entity_values(self, elemval, entity_values: list):
-        elemval = str(elemval)
+        isbyte = isinstance(elemval, bytes)
+
+        elemval = self.safe_str(elemval)
         n_words = len(elemval.split())
         deid_val = elemval[:]
         if n_words == 1:
@@ -176,5 +178,10 @@ class DcmPHIDetector:
             # return empty string in case of value almost stripped by anonymizer
             if remaining_value_prcnt <= 0.2:
                 deid_val = ""
+
+        deid_val = deid_val.strip()
+
+        if isbyte:
+            return str.encode(deid_val)
 
         return deid_val

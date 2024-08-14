@@ -233,7 +233,7 @@ class Anonymizer:
                 if not self.anonymized_file_exists(dcm, dir):
                     history, outfile = self.anonymize_metadata_on_file(dcm, dir, patient_attrs_action)
                     #self.logger.debug(f"{history}")
-                    self.anonymize_image_data_on_file(dcm, replace=False)
+                    self.anonymize_image_data_on_file(dcm, replace=True)
                     progress_bar.update(1)
             
         progress_bar.close()

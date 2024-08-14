@@ -16,7 +16,7 @@ from dicomanonymizer.simpledicomanonymizer import (
 from dcm_anonymizers.phi_detectors import DcmPHIDetector
 from dcm_anonymizers.ps_3_3 import DCMPS33Anonymizer, replace_with_value
 
-TCIA_DEID_ATTRS_JSON = '../dcm_anonymizers/tcia_deid_attrs.json'
+TCIA_DEID_ATTRS_JSON = 'dcm_anonymizers/tcia_deid_attrs.json'
 SHIFT_DATE_OFFSET = 120
 
 def load_ps3_tags(json_path: str):
