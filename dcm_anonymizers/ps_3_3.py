@@ -23,7 +23,7 @@ from dcm_anonymizers.phi_detectors import DcmPHIDetector
 
 import logging
 
-PS_3_3_ATTRS_JSON = 'dcm_anonymizers/ps3.3_profile_attrs.json'
+PS_3_3_ATTRS_JSON = '../dcm_anonymizers/ps3.3_profile_attrs.json'
 SHIFT_DATE_OFFSET = 120
 
 def format_action_dict(actions):
@@ -176,7 +176,6 @@ class DCMPS33Anonymizer:
 
         Date and time elements are all handled in the same way, whether they are emptied or removed.
         """
-        # print(element.name, element.VR, element.value)
         if element.VR == "DA":
             element.value = self.shift_date(element.value, days=self.shift_date_offset)
         elif element.VR == "DT":
@@ -186,7 +185,6 @@ class DCMPS33Anonymizer:
             pass
         else:
             pass
-
 
     def custom_replace_element(self, element: pydicom.DataElement):
         """
@@ -264,7 +262,8 @@ class DCMPS33Anonymizer:
                     element.value = ""
             # pass
         elif element.VR in ("DT", "DA", "TM"):
-            self.custom_replace_date_time_element(element)
+            # self.custom_replace_date_time_element(element)
+            element.value = ""
         elif element.VR in ("UL", "FL", "FD", "SL", "SS", "US"):
             element.value = 0
         elif element.VR in ("DS", "IS"):
@@ -313,6 +312,16 @@ class DCMPS33Anonymizer:
         return anonymization_actions
 
 
+    def extract_sequence_element_datasets(self, dataset: pydicom.Dataset):
+        sequence_datasets: list = []
+        for elem in dataset:
+            if elem.VR == 'SQ':
+                elem_dataset = elem.value[0]
+                sequence_datasets.append(elem_dataset)
+                # sequence_datasets = self.extract_sequence_element_datasets(elem_dataset, sequence_datasets)
+        return sequence_datasets
+
+
     def anonymize_dataset(
         self,
         dataset: pydicom.Dataset,
@@ -330,7 +339,6 @@ class DCMPS33Anonymizer:
 
         if extra_anonymization_rules is not None:
             current_anonymization_actions.update(extra_anonymization_rules)
-
         
         if delete_private_tags:
             private_tags_actions = {}
@@ -348,6 +356,16 @@ class DCMPS33Anonymizer:
 
         action_history = {}
         private_tags = []
+        sequences = []
+
+        def walk_sequences(dataset):
+            for elem in dataset:
+                if elem.VR == 'SQ':            
+                    for i, item in enumerate(elem.value):
+                        sequences.append(item)
+                        walk_sequences(item) 
+
+        walk_sequences(dataset)   
 
         for tag, action in current_anonymization_actions.items():
             # check current tag already exists in the 
@@ -382,7 +400,13 @@ class DCMPS33Anonymizer:
                     # Apply rule to meta information header
                     action(dataset.file_meta, tag)
                 else:
-                    action(dataset, tag)            
+                    action(dataset, tag)
+                
+                # also check if the tag exists inside
+                # the sequences.
+                for s in sequences:
+                    if tag in s:
+                        action(s, tag)                                                   
                 
                 if element:
                     # check if Series Instance UID, then store the id in series id map
