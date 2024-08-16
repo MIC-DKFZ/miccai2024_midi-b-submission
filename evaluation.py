@@ -148,7 +148,7 @@ if __name__ == "__main__":
         uidsmappath=Path(root_data_dir, 'Pseudo-PHI-DICOM-Dataset-uid_crosswalk.csv'),
     )
 
-    anonymizer_output_path = Path(root_data_dir, 'anonymizer-output/Pseudo-PHI-DICOM-Data')
+    anonymizer_output_path = Path(root_data_dir, 'anonymizer-output/Pseudo-PHI-DICOM-Data-3')
 
     path_mapping_file = Path(anonymizer_output_path, 'mappings/path_mapping.csv')
 
@@ -168,9 +168,9 @@ if __name__ == "__main__":
         
         for tag in current_mismatching_tags.keys():
             if tag in mismatching_tags:
-                mismatching_tags[tag] += current_mismatching_tags[tag]
+                mismatching_tags[tag] += 1
             else:
-                mismatching_tags[tag] = current_mismatching_tags[tag]
+                mismatching_tags[tag] = 1
         
         progress_bar.update(1)
 

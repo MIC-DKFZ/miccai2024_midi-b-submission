@@ -231,9 +231,9 @@ class Anonymizer:
             dcms = list_all_files(dir)
             for dcm in dcms:
                 if not self.anonymized_file_exists(dcm, dir):
-                    history, outfile = self.anonymize_metadata_on_file(dcm, dir, patient_attrs_action)
+                    _, outfile = self.anonymize_metadata_on_file(dcm, dir, patient_attrs_action)
                     #self.logger.debug(f"{history}")
-                    self.anonymize_image_data_on_file(dcm, replace=True)
+                    self.anonymize_image_data_on_file(outfile, replace=True)
                     progress_bar.update(1)
             
         progress_bar.close()

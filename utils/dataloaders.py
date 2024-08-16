@@ -90,7 +90,7 @@ class MIDIEvalDataLoader:
         assert idx < self.n_patients, f"Patient index greater than available patient dicoms. Available patients {self.n_patients}"
 
         rawdicoms, rawmetadata = self.load_raw_patient(idx)
-        print(rawmetadata)
+        # print(rawmetadata)
 
         deid_series = self.raw_2_deid[rawmetadata['Series UID']]
         deid_idx = self._get_series_index_from_id(self.deidmetadata, deid_series)

@@ -1,6 +1,9 @@
 .ipynb_checkpoints
 __pycache__
 
+*.log
+*.out
+*.out.*?
 *.dcm
 *.zip
 # data

@@ -28,7 +28,11 @@ class DcmPHIDetector:
     
     def safe_str(self, elementval: str):
         if isinstance(elementval, bytes):
-            return elementval.decode("utf-8")
+            try:
+                decoded = elementval.decode("utf-8")
+            except UnicodeError:
+                decoded = str(elementval)
+            return decoded
         return str(elementval)
 
     def process_element_val(self, element):

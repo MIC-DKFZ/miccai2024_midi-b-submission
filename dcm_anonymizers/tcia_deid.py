@@ -30,14 +30,6 @@ def load_ps3_tags(json_path: str):
 
     return tags
 
-def keep_element(element):
-    pass
-
-def tcia_keep(dataset, tag):
-    element = dataset.get(tag)
-    return keep_element(element)
-
-
 class DCMTCIAAnonymizer(DCMPS33Anonymizer):
     def __init__(self, phi_detector: DcmPHIDetector = None):        
         super().__init__(phi_detector)       
@@ -111,6 +103,17 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
 
         return anonymization_actions
     
+    def is_utf8(self, element):
+        elementval = element.value
+        if isinstance(elementval, str):
+            return True
+        
+        try:
+            _ = elementval.decode('utf-8')
+            return True
+        except UnicodeError:
+            return False
+    
     def extract_private_tags(self, dataset: pydicom.Dataset):
         all_texts = ''
         tag_position_map = {}
@@ -130,6 +133,8 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
                 if re.search(empty_tags_pattern, str(element.name.lower())):
                     id_tags.append(element.tag)
                 elif element.VR in ("LO", "LT", "SH", "PN", "CS", "ST", "UT", "UN") and element.value != "":
+                    if element.VR == "UN" and not self.is_utf8(element):
+                        continue
                     element_val = self.detector.process_element_val(element)
                     element_name = self.detector.processed_element_name(element.name)
                     element_text = f"{element_name}: {element_val}"
@@ -154,7 +159,7 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
         all_private_texts, text_tag_mapping, id_tags = self.extract_private_tags(dataset)
         for tag in id_tags:
             element = dataset.get(tag)
-            private_tags_actions[(element.tag.group, element.tag.element)] = delete
+            private_tags_actions[(element.tag.group, element.tag.element)] = self.tcia_delete
 
         tags_w_entities = self.detector.detect_enitity_tags_from_text(all_private_texts, text_tag_mapping)
         for tag in tags_w_entities:
