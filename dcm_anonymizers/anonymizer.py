@@ -224,7 +224,12 @@ class Anonymizer:
     def run(self):        
         print(f"Total dicoms to be anonymized: {self.total_dcms}")
         progress_bar = tqdm.tqdm(total=self.total_dcms)
+        
+        start_from = 0
         for idx, dir in enumerate(self.dcm_dirs):
+            if idx < start_from:
+                progress_bar.update(1)
+                continue
             
             patient_attrs_action = self.create_patient_attrs_action(dir)
             

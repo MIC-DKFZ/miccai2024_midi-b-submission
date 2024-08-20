@@ -401,12 +401,12 @@ class DCMPS33Anonymizer:
                     action(dataset.file_meta, tag)
                 else:
                     action(dataset, tag)
-                
+
                 # also check if the tag exists inside
                 # the sequences.
                 for s in sequences:
                     if tag in s:
-                        action(s, tag)                                                   
+                        action(s, tag)                                                 
                 
                 if element:
                     # check if Series Instance UID, then store the id in series id map
@@ -422,11 +422,10 @@ class DCMPS33Anonymizer:
 
                 # Get private tag to restore it later
                 # check if the element is already not deleted
-                if element and action != delete and element.tag.is_private:
-                   private_tags.append(simpledicomanonymizer.get_private_tag(dataset, tag))
-                
-        
-        # print(private_tags)
+                if element and (action != delete and action.__name__ != 'tcia_delete') and element.tag.is_private:                                   
+                    private_tags.append(simpledicomanonymizer.get_private_tag(dataset, tag))
+
+
 
         self.history = action_history
 

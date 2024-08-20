@@ -2,11 +2,13 @@
 __pycache__
 
 *.log
-*.out
-*.out.*?
+nohup*
 *.dcm
 *.zip
 # data
 *.dcm
 data/raw
 data/deid
+
+.tmp
+run

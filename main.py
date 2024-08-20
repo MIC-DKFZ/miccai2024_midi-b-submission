@@ -2,7 +2,7 @@ from pathlib import Path
 
 from dcm_anonymizers.anonymizer import Anonymizer
 
-DEID_DATASET_ROOT = '/home/r079a/Desktop/de-identification/dataset'
+# DEID_DATASET_ROOT = '/home/r079a/Desktop/de-identification/dataset'
 
 # if __name__ == "__main__":
 #     anonymizer = Anonymizer(
@@ -14,7 +14,7 @@ DEID_DATASET_ROOT = '/home/r079a/Desktop/de-identification/dataset'
     
 DEID_DATASET_ROOT = '/home/r079a/Desktop/de-identification/dataset/midi-validation-data'
 
-# 976218
+# 404058
 if __name__ == "__main__":
     anonymizer = Anonymizer(
         input_path=Path(DEID_DATASET_ROOT, 'input_data'),
