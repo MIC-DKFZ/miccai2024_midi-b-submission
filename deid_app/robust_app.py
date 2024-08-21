@@ -495,6 +495,7 @@ class RobustDeID(object):
         text_list = []
         current_start = 0
         current_end = 0
+        full_end = 0
         for match in re.finditer(pattern, deid_text):
             full_start, full_end = match.span()
             sub_text = deid_text[full_start:full_end]

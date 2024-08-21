@@ -18,7 +18,7 @@ from dicomanonymizer.simpledicomanonymizer import (
 from dicomanonymizer.format_tag import tag_to_hex_strings
 
 from dcm_anonymizers.utils import int_tuple_to_basetag, get_hashid, parse_date_string
-from dcm_anonymizers.phi_detectors import DcmPHIDetector
+from dcm_anonymizers.phi_detectors import DcmPHIDetector, DcmRobustPHIDetector
 
 
 import logging
@@ -71,7 +71,7 @@ def replace_with_value(options: Union[list, dict]):
 
 
 class DCMPS33Anonymizer:
-    def __init__(self, phi_detector: DcmPHIDetector = None):
+    def __init__(self, phi_detector: DcmRobustPHIDetector = None):
         super().__init__()
         self.uid_dict = {}
         self.series_uid_dict = {}

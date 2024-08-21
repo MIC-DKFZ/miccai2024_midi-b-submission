@@ -1,9 +1,11 @@
+import re
 from typing import Union
 import numpy as np
 
 import pydicom
 from transformers import pipeline
 
+from deid_app.robust_app import RobustDeID as RobustDeIDPipeline
 
 class DcmPHIDetector:
     def __init__(self) -> None:
@@ -189,3 +191,168 @@ class DcmPHIDetector:
             return str.encode(deid_val)
 
         return deid_val
+
+
+class DcmRobustPHIDetector:
+    def __init__(self) -> None:
+        self.modelname = "OBI-RoBERTa De-ID"
+        self.threshold = "No threshold"
+        self.pipeline = None
+
+        self._init_pipeline()
+    
+    def _init_pipeline(self):
+        self.pipeline = RobustDeIDPipeline(
+            self.modelname, 
+            self.threshold,
+            disable_logs=True
+        )
+    
+    def safe_str(self, elementval: str):
+        if isinstance(elementval, bytes):
+            try:
+                decoded = elementval.decode("utf-8")
+            except UnicodeError:
+                decoded = str(elementval)
+            return decoded
+        return str(elementval)
+
+    def process_element_val(self, element):
+        elementval = ""
+        if self.safe_str(element.value).strip() == "":
+            return elementval
+        
+        if element.VM > 1:
+            items = [self.safe_str(item) for item in element.value if item.strip() != '']
+            elementval = ', '.join(items)
+        elif element.VM == 1:
+            elementval = self.safe_str(element.value)
+        elementval = elementval.replace("'", '')
+        if element.VR == 'PN':
+            elementval = elementval.replace("^", ' ')
+        return elementval.strip()
+
+    def processed_element_name(self, element_name: str):
+        element_name = element_name.strip()
+        return element_name.lstrip("[").rstrip("]") 
+
+    def element_to_text(self, element):
+        return f"{self.processed_element_name(element.name)}: {self.process_element_val(element)}"
+    
+    def run_deid(self, texts: list[str]):
+        notes = []
+
+        for idx, text in enumerate(texts):
+            note = {"text": text, "meta": {"note_id": f"note_{idx}", "patient_id": "patient_1"}, "spans": []}
+            notes.append(note)
+
+        ner_notes = self.pipeline.get_ner_dataset_from_json_list(notes)
+
+        predictions = self.pipeline.get_predictions_from_generator(ner_notes)
+
+        predictions_list = [item for item in predictions]
+
+        deid_dict_list = list(self.pipeline.get_deid_text_replaced_from_values(notes, predictions_list))
+
+        # Get deid text
+        deid_texts = [pred_dict['deid_text'] for pred_dict in deid_dict_list]
+
+        highlight_texts = []
+        for deid_text in deid_texts:
+            highligted = [highlight_text for highlight_text in RobustDeIDPipeline._get_highlights(deid_text)]
+            highlight_texts.append(highligted)
+
+        return highlight_texts
+
+
+    def detect_entities(self, text: str):
+        """
+        input -> "Hospital Name: Scott Community Hospital"
+        outputs -> [('Scott Community Hospital', 'HOSP', 0)]
+        """
+        if text == "":
+            return []
+        
+        outputs = self.run_deid([text])
+        
+        deid_text = ''
+        entities = []
+        for item in outputs[0]:
+            if item[1]:
+                entity = (item[0], item[1], len(deid_text))
+                entities.append(entity)
+
+            deid_text += item[0]
+   
+        return entities
+
+    def detect_entities_from_element(self, element: pydicom.DataElement) -> list:
+        element_name = self.processed_element_name(element.name)
+        element_text = f"{element_name}: {self.process_element_val(element)}"
+        entities = self.detect_entities(element_text)
+        # filter entitites, if those are detected from entity name
+        entities = [entity for entity in entities if entity[2] > len(element_name)]
+        return entities
+
+    def detect_enitity_tags_from_text(self, all_texts: str, text_tag_mapping: dict):
+        entities = self.detect_entities(all_texts)
+        element_target = {}
+
+        for e in entities:
+            e_start = e[2]
+            for t in text_tag_mapping:
+                if e_start >= text_tag_mapping[t][0] and e_start <= text_tag_mapping[t][1]:
+                    if t in element_target:
+                        element_target[t].append(e[0])
+                    else:
+                        element_target[t] = [e[0]]
+        
+        return element_target
+    
+    def deid_element_from_entity_values(self, element: pydicom.DataElement, entity_values: list):
+        isbyte = isinstance(element.value, bytes)
+
+        elemval = self.process_element_val(element)
+        deid_val = elemval[:]
+        entity_n_chars = len(''.join(entity_values))
+
+        if len(elemval) == entity_n_chars:
+            return ""
+        
+        for entity_val in entity_values:
+            if entity_val in deid_val:
+                deid_val = deid_val.replace(entity_val, '', 1)
+            else:
+                entity_pattern = re.sub(r'\s+', '.*', entity_val)
+                match = re.search(entity_pattern, deid_val)
+                if match:
+                    deid_val = deid_val.replace(match.group(), '', 1)
+                else:                
+                    print(f"{entity_val} not found in the original value {elemval}")
+
+        deid_val = deid_val.strip()
+
+        if element.VM > 1:
+            splitted = deid_val.split(', ')
+            if isbyte:
+                splitted = [str.encode(s) for s in splitted]
+            return splitted
+        
+        if isbyte:
+            return str.encode(deid_val)
+
+        return deid_val
+    
+    def deidentified_element_val(self, element: pydicom.DataElement) -> Union[str, list[str]]:
+        if self.safe_str(element.value).strip() == "":
+            return element.value
+        
+        entities = self.detect_entities_from_element(element)
+        if len(entities) == 0:
+            return element.value
+        
+        entity_values = [entity[0] for entity in entities]
+
+        return self.deid_element_from_entity_values(element, entity_values)
+
+        

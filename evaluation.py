@@ -148,7 +148,7 @@ if __name__ == "__main__":
         uidsmappath=Path(root_data_dir, 'Pseudo-PHI-DICOM-Dataset-uid_crosswalk.csv'),
     )
 
-    anonymizer_output_path = Path(root_data_dir, 'anonymizer-output/Pseudo-PHI-DICOM-Data-3')
+    anonymizer_output_path = Path(root_data_dir, 'anonymizer-output/Pseudo-PHI-DICOM-Data-4')
 
     path_mapping_file = Path(anonymizer_output_path, 'mappings/path_mapping.csv')
 

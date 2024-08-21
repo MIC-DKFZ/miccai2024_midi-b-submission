@@ -13,7 +13,7 @@ from dicomanonymizer.simpledicomanonymizer import (
     keep
 )
 
-from dcm_anonymizers.phi_detectors import DcmPHIDetector
+from dcm_anonymizers.phi_detectors import DcmPHIDetector, DcmRobustPHIDetector
 from dcm_anonymizers.ps_3_3 import DCMPS33Anonymizer, replace_with_value
 
 TCIA_DEID_ATTRS_JSON = 'dcm_anonymizers/tcia_deid_attrs.json'
@@ -31,7 +31,7 @@ def load_ps3_tags(json_path: str):
     return tags
 
 class DCMTCIAAnonymizer(DCMPS33Anonymizer):
-    def __init__(self, phi_detector: DcmPHIDetector = None):        
+    def __init__(self, phi_detector: DcmRobustPHIDetector = None):        
         super().__init__(phi_detector)       
 
         self.logger.debug("TCIA anonymizer init")
@@ -48,6 +48,7 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
             'lookup': replace,
             'hashname': replace,
         }
+        self.tag_seperator = ',\n'
         
         actions_map_name_functions.update({
             "delete": self.tcia_delete,
@@ -138,13 +139,22 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
                     element_val = self.detector.process_element_val(element)
                     element_name = self.detector.processed_element_name(element.name)
                     element_text = f"{element_name}: {element_val}"
+                    
+                    # prev text + element_name + colon
                     start = len(all_texts) + len(element_name) + 1
-                    end = start + len(element_name)
-                    tag_position_map[element.tag] = (start, end)
+                    # if not the first item, then additional 2 chars for comma+space
+                    if all_texts != '':
+                        start += len(self.tag_seperator)
+                        
+                    end = start + len(element_val) + 1
+                    
+                    tag_position_map[element.tag] = (start, end)                    
                     if all_texts == '':
                         all_texts += f"{element_text}"
                     else:
-                        all_texts += f", {element_text}"
+                        all_texts += f"{self.tag_seperator}{element_text}"
+
+                    assert all_texts[start:end] == f" {element_val}", f"{all_texts[start:end]} != {element_val}"
         
         return all_texts, tag_position_map, id_tags
 
@@ -164,7 +174,7 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
         tags_w_entities = self.detector.detect_enitity_tags_from_text(all_private_texts, text_tag_mapping)
         for tag in tags_w_entities:
             element = dataset.get(tag)
-            deid_val = self.detector.deid_element_values_from_entity_values(element.value, tags_w_entities[tag])
+            deid_val = self.detector.deid_element_from_entity_values(element, tags_w_entities[tag])
             private_tags_actions[(element.tag.group, element.tag.element)] = replace_with_value([deid_val])
         
         extra_anonymization_rules.update(private_tags_actions)
