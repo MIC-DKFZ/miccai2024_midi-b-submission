@@ -1,6 +1,7 @@
 import json
 from typing import Union
 from ast import literal_eval
+from decimal import Decimal
 from datetime import timedelta
 
 import pydicom
@@ -83,6 +84,7 @@ class DCMPS33Anonymizer:
         self.logger.setLevel(logging.DEBUG)
         
         self.detector = phi_detector
+        self.ignored_tags = []
 
         self._override_simpledicomanonymizer()
 
@@ -102,9 +104,13 @@ class DCMPS33Anonymizer:
     def shift_date(self, date_string, days=0, hours=0, minutes=0, seconds=0, date_only=True):
         if date_string == '':
             return date_string
-            
+
         # Parse the date string
         original_date = parse_date_string(date_string)
+
+        # extract the miliseconds digits if provided
+        d = Decimal(date_string)
+        milisecs_digits = abs(d.as_tuple().exponent)
         
         # Create a timedelta object based on the provided offset values
         offset = timedelta(days=days, hours=hours, minutes=minutes, seconds=seconds)
@@ -114,8 +120,11 @@ class DCMPS33Anonymizer:
 
         if date_only:
             return new_date.date().strftime("%Y%m%d")
-        
-        return new_date.strftime("%Y%m%d%H%M%S")
+        elif milisecs_digits > 0:        
+            return new_date.strftime("%Y%m%d%H%M%S.%f")
+        else:
+            return new_date.strftime("%Y%m%d%H%M%S")
+
     
     def get_UID(self, old_uid: str) -> str:
         """
@@ -201,12 +210,11 @@ class DCMPS33Anonymizer:
 
         See https://laurelbridge.com/pdf/Dicom-Anonymization-Conformance-Statement.pdf
         """
-        # print(element.name, element.VR, element.value)
         if element.VR in ("LO", "LT", "SH", "PN", "CS", "ST", "UT"):
-            # print(element.name, element.VR, element.value)
-            # element.value = "ANONYMIZED"  # CS VR accepts only uppercase characters
             if self.detector:
                 element.value = self.detector.deidentified_element_val(element)
+            else:
+                self.ignored_tags.append((element.tag, 'replace'))
         elif element.VR == "UI":
             replace_element_UID(element)
         elif element.VR in ("DS", "IS"):            
@@ -260,7 +268,9 @@ class DCMPS33Anonymizer:
                 entities = self.detector.detect_entities_from_element(element)
                 if len(entities) > 0:
                     element.value = ""
-            # pass
+            else:
+                # self.ignored_tags.append((element.tag, 'empty'))
+                element.value = ""
         elif element.VR in ("DT", "DA", "TM"):
             # self.custom_replace_date_time_element(element)
             element.value = ""
@@ -456,4 +466,4 @@ class DCMPS33Anonymizer:
             delete_private_tags=True,
         )
 
-        return self.history
+        return self.history, self.ignored_tags

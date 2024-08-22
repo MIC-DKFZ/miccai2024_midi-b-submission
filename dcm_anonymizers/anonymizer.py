@@ -65,7 +65,10 @@ class Anonymizer:
         # initialize model
         phi_detector = DcmRobustPHIDetector()
         # self.anonymizer = DCMPS33Anonymizer(phi_detector=phi_detector)
-        self.anonymizer = DCMTCIAAnonymizer(phi_detector=phi_detector)
+        self.anonymizer = DCMTCIAAnonymizer(
+            phi_detector=None,
+            notes_phi_detector=None,
+        )
         self.img_anonymizer = DCMImageAnonymizer(phi_detector=phi_detector)
 
     
@@ -226,20 +229,22 @@ class Anonymizer:
         progress_bar = tqdm.tqdm(total=self.total_dcms)
         
         start_from = 0
-        for idx, dir in enumerate(self.dcm_dirs):
-            if idx < start_from:
-                progress_bar.update(1)
-                continue
-            
+        count = 0
+        for idx, dir in enumerate(self.dcm_dirs):            
             patient_attrs_action = self.create_patient_attrs_action(dir)
             
             dcms = list_all_files(dir)
             for dcm in dcms:
+                if count < start_from:
+                    progress_bar.update(1)
+                    count += 1
+                    continue
                 if not self.anonymized_file_exists(dcm, dir):
                     _, outfile = self.anonymize_metadata_on_file(dcm, dir, patient_attrs_action)
                     #self.logger.debug(f"{history}")
                     self.anonymize_image_data_on_file(outfile, replace=True)
                     progress_bar.update(1)
+                    count += 1
             
         progress_bar.close()
         

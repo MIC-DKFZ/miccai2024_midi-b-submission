@@ -148,7 +148,7 @@ if __name__ == "__main__":
         uidsmappath=Path(root_data_dir, 'Pseudo-PHI-DICOM-Dataset-uid_crosswalk.csv'),
     )
 
-    anonymizer_output_path = Path(root_data_dir, 'anonymizer-output/Pseudo-PHI-DICOM-Data-4')
+    anonymizer_output_path = Path(root_data_dir, 'anonymizer-output/Pseudo-PHI-DICOM-Data-6-without-AI')
 
     path_mapping_file = Path(anonymizer_output_path, 'mappings/path_mapping.csv')
 
@@ -159,6 +159,7 @@ if __name__ == "__main__":
     total_elements = 0
     total_mismatched = 0
     mismatching_tags = {}
+    mismatching_tags_idx = {}
     progress_bar = tqdm.tqdm(total=total_series)
 
     for i in range(total_series):
@@ -169,8 +170,10 @@ if __name__ == "__main__":
         for tag in current_mismatching_tags.keys():
             if tag in mismatching_tags:
                 mismatching_tags[tag] += 1
+                mismatching_tags_idx[tag].append(i)
             else:
                 mismatching_tags[tag] = 1
+                mismatching_tags_idx[tag] = [i]
         
         progress_bar.update(1)
 
@@ -185,8 +188,25 @@ if __name__ == "__main__":
     print("Mismatched Tags Summary:")
     print("--------------------------------------------")
     for tag in mismatching_tags.keys():
-        print(f"\t{tag}: {mismatching_tags[tag]}")
+        mismatched_idx_str = ','.join(str(x) for x in mismatching_tags_idx[tag])
+        print(f"\t{tag}: {mismatching_tags[tag]} -> {mismatched_idx_str}")
     print("---------------------------------------------")
 
-    
+
+# VR which needs to be replaced by AI
+# LO, ST, LT
+# PN -> empty
+# Custom Rules
+# (0x0008, 0x2111) | Derivation Description | remove -> replace / AI
+# (0x0010, 0x2180) | Occupation | remove -> keep
+# (0x0012, 0x0051) | Clinical Trial Time Point Description | keep -> remove
+# (0x0012, 0x0010), (0x0012, 0x0020) | Clinical Trial Sponsor Name/Protocol ID | replace -> remove
+# (0x0012, 0x0021), (0x0012, 0x0030), (0x0012, 0x0031) | Clinical Trial Site .. | empty -> remove
+# (0x0012, 0x0042) | Clinical Trial Subject Reading ID | replace -> remove
+# (0x0010, 0x4000) | Patient Comments | remove -> replace
+# (0x0040, 0x0009) | Scheduled Procedure Step ID | remove -> keep
+# (0x0020, 0x4000) | Image Comments | remove -> replace
+# (0x0018, 0x700C) | Date of Last Detector Calibration | incrementdate -> empty
+# (0x0018, 0x700A) | Detector ID | remove -> empty
+# ?? (0x0028, 0x0034) | Pixel Aspect Ratio | remove
 

@@ -208,7 +208,8 @@ class DcmRobustPHIDetector:
             disable_logs=True
         )
     
-    def safe_str(self, elementval: str):
+    @staticmethod
+    def safe_str(elementval: str):
         if isinstance(elementval, bytes):
             try:
                 decoded = elementval.decode("utf-8")
@@ -217,27 +218,39 @@ class DcmRobustPHIDetector:
             return decoded
         return str(elementval)
 
-    def process_element_val(self, element):
+    @staticmethod
+    def process_element_val(element):
         elementval = ""
-        if self.safe_str(element.value).strip() == "":
+        if DcmRobustPHIDetector.safe_str(element.value).strip() == "":
             return elementval
         
         if element.VM > 1:
-            items = [self.safe_str(item) for item in element.value if item.strip() != '']
+            items = [DcmRobustPHIDetector.safe_str(item) for item in element.value if item.strip() != '']
             elementval = ', '.join(items)
         elif element.VM == 1:
-            elementval = self.safe_str(element.value)
+            elementval = DcmRobustPHIDetector.safe_str(element.value)
         elementval = elementval.replace("'", '')
         if element.VR == 'PN':
             elementval = elementval.replace("^", ' ')
         return elementval.strip()
 
-    def processed_element_name(self, element_name: str):
+    @staticmethod
+    def processed_element_name(element_name: str):
         element_name = element_name.strip()
         return element_name.lstrip("[").rstrip("]") 
 
-    def element_to_text(self, element):
-        return f"{self.processed_element_name(element.name)}: {self.process_element_val(element)}"
+    @staticmethod
+    def element_to_text(element):
+        return f"{DcmRobustPHIDetector.processed_element_name(element.name)}: {DcmRobustPHIDetector.process_element_val(element)}"
+    
+    @staticmethod
+    def clear_mistaken_highlights(textpart: str):
+        pattern = re.compile(r'<<(PATIENT|STAFF|AGE|DATE|LOCATION|PHONE|ID|EMAIL|PATORG|HOSPITAL|OTHERPHI):((.)*)?>>', re.DOTALL)
+        matches = re.search(pattern, textpart)
+        if matches:
+            textpart = textpart.replace(matches.group(0), matches.group(2))
+
+        return textpart
     
     def run_deid(self, texts: list[str]):
         notes = []
@@ -275,14 +288,22 @@ class DcmRobustPHIDetector:
         
         outputs = self.run_deid([text])
         
-        deid_text = ''
         entities = []
+        current = 0
+
         for item in outputs[0]:
+            itemval = item[0]
+            itemval = DcmRobustPHIDetector.clear_mistaken_highlights(itemval)
+
             if item[1]:
-                entity = (item[0], item[1], len(deid_text))
+                found_in = text[current:].find(itemval)
+                start = current + found_in
+                entity = (itemval, item[1], start)
                 entities.append(entity)
 
-            deid_text += item[0]
+                assert text[start:start+len(item[0])] == itemval, "segmenting entities from note text mismatch"
+
+            current += len(itemval)
    
         return entities
 
@@ -344,7 +365,7 @@ class DcmRobustPHIDetector:
         return deid_val
     
     def deidentified_element_val(self, element: pydicom.DataElement) -> Union[str, list[str]]:
-        if self.safe_str(element.value).strip() == "":
+        if DcmRobustPHIDetector.safe_str(element.value).strip() == "":
             return element.value
         
         entities = self.detect_entities_from_element(element)
