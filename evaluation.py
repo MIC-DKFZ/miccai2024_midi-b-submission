@@ -7,6 +7,8 @@ from pydicom import dcmread
 
 from utils.dataloaders import MIDIEvalDataLoader
 from dcm_anonymizers.utils import list_all_files
+from dcm_anonymizers.phi_detectors import DcmRobustPHIDetector
+from dcm_anonymizers.img_anonymizers import DCMImageAnonymizer
 
 def id_map_csv_to_dict(csvfile: str):
     id_map = {}
@@ -100,7 +102,25 @@ def find_mismatched_tags(tagvalues: list[tuple]):
 
     return n_mismatched, mismatched_tags
 
-def evaluate_series_by_index(series_idx, loader, series_output_path_map):
+
+def find_mismatched_in_pixel_data(imganonymizer: DCMImageAnonymizer, dcm_deid_gt, dcm_deid):
+    gt_note, _, _ = imganonymizer.extract_texts_as_note(dcm_deid_gt.pixel_array)
+    gt_texts = gt_note.split('\n')
+
+    deidentified_note, _, _ = imganonymizer.extract_texts_as_note(dcm_deid.pixel_array)
+    deidentified_texts = deidentified_note.split('\n')
+
+    diff = abs(len(deidentified_texts) - len(gt_texts))
+    # if diff > 0:
+    #     print(gt_note)
+    #     print(deidentified_note)
+
+    return diff, len(gt_texts)
+
+
+def evaluate_series_by_index(
+        series_idx, loader, series_output_path_map, imganonymizer: DCMImageAnonymizer
+    ):
 
     (rawdcm, metadata), (deiddcm, deiddcm_metadata) = loader.get_raw_n_deid_patient(series_idx, include_metadata=True)
     deidentfied_dcm_paths = get_dcm_paths_from_series(metadata['Series UID'], series_output_path_map)
@@ -136,6 +156,14 @@ def evaluate_series_by_index(series_idx, loader, series_output_path_map):
             else:
                 mismatching_tags[tag] = 1
 
+        # image anonymization evaluation
+        n_img_mismatched, total_img_txts = find_mismatched_in_pixel_data(imganonymizer, deid_gt, anonymized)
+        total_elements += total_img_txts
+        total_mismatched += n_img_mismatched
+
+        if n_img_mismatched > 0:
+            mismatching_tags['text_from_image'] = n_img_mismatched
+
     return total_elements, total_mismatched, mismatching_tags
 
 
@@ -147,6 +175,9 @@ if __name__ == "__main__":
         deidimagespath=Path(root_data_dir, 'images-2/manifest-1617826161202'),
         uidsmappath=Path(root_data_dir, 'Pseudo-PHI-DICOM-Dataset-uid_crosswalk.csv'),
     )
+
+    detector = DcmRobustPHIDetector()
+    img_anonymizer = DCMImageAnonymizer(phi_detector=detector)
 
     anonymizer_output_path = Path(root_data_dir, 'anonymizer-output/Pseudo-PHI-DICOM-Data-6-without-AI')
 
@@ -163,7 +194,9 @@ if __name__ == "__main__":
     progress_bar = tqdm.tqdm(total=total_series)
 
     for i in range(total_series):
-        current_elements, current_mismatched, current_mismatching_tags = evaluate_series_by_index(i, loader, series_output_map)
+        current_elements, current_mismatched, current_mismatching_tags = evaluate_series_by_index(
+            i, loader, series_output_map, img_anonymizer
+        )
         total_elements += current_elements
         total_mismatched += current_mismatched
         

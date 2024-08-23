@@ -7,6 +7,9 @@ import logging
 
 from dcm_anonymizers.phi_detectors import DcmPHIDetector
 
+# Function to calculate Euclidean distance between two points
+def euclidean_distance(point1, point2):
+    return np.sqrt((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2)
 
 class DCMImageAnonymizer:
     def __init__(self,  phi_detector: DcmPHIDetector, use_gpu: bool = True) -> None:
@@ -41,9 +44,38 @@ class DCMImageAnonymizer:
         result = self.ocr.ocr(img_arr, cls=True)
         return result
     
+    def get_polygons_color(self, img, polygon):
+        cX, cY = img.shape[0]/2, img.shape[1]/2
+
+        polygon_points = np.array(polygon, np.int32)
+
+        closest_dist = 9999999
+        selected_point = polygon_points[0]
+
+        for point in polygon_points:
+            distance = euclidean_distance([cX, cY], point)
+            if distance < closest_dist:
+                selected_point = point
+
+        pX, pY = selected_point
+
+        color = img[pY, pX]
+        if isinstance(color, list):
+            color = [int(c) for c in color]
+            color = tuple(color)
+        else:
+            color = int(color)
+
+        return color
+    
     # Function to draw polygons
-    def draw_filled_polygons(self, img, polygons: list, color=(255, 255, 255)):
+    def draw_filled_polygons(self, img, polygons: list, color=None):
         for poly in polygons:
+            color = self.get_polygons_color(img, poly)
+
+            # print(poly)
+            # print(color)
+
             # Convert the polygon to a NumPy array of int32 type
             pts = np.array(poly, dtype=np.int32)
             pts = pts.reshape((-1, 1, 2))
@@ -55,6 +87,42 @@ class DCMImageAnonymizer:
             img = cv2.polylines(img, [pts], isClosed=True, color=color, thickness=5)
 
         return img
+    
+    def extract_texts_as_note(self, pixel_array):
+        texts = ''
+        bbox_map = {}
+        text_position_map = {}
+        normalized = self.normalize_pixel_arr(pixel_array)
+        extracted = self.extract_from_pixel_array(normalized)
+
+        if extracted[0] and len(extracted[0]) > 0:           
+            for e in extracted[0]:
+                bbox = e[0]
+                text = e[1][0]
+
+                start = len(texts)
+                texts += f"{text}\n"
+                end = len(texts)
+
+                bbox_map[text] = bbox
+                text_position_map[text] = (start, end)
+        
+        return texts, bbox_map, text_position_map
+
+    def get_associated_bounding_boxes(self, entities: list, bbox_map, text_position_map):
+        selected_bbox = []
+        added_bbox = []
+        for entiity in entities:
+            start = entiity[2]
+            for text in text_position_map.keys():
+                txt_start, txt_end = text_position_map[text]
+                if start >= txt_start and start < txt_end:
+                    bbox = bbox_map[text]
+                    if text not in added_bbox:
+                        selected_bbox.append(bbox)
+                        added_bbox.append(text)
+                    break
+        return selected_bbox
 
     
     def anonymize_dicom_image_data(self, ds: pydicom.Dataset): 
@@ -76,32 +144,34 @@ class DCMImageAnonymizer:
                 "DICOM pixel array found with shape {} of Modality {}".format(str(ds.pixel_array.shape), ds.Modality)
             )
             return False
+        
+        ## Earlier Implementation
+        # detected_phi = self.detector.detect_entities(text)
+        # if len(detected_phi) > 0:
+        #     extracted_txt_list = [entity[0] for entity in detected_phi]
+        #     extracted_text = "".join(extracted_txt_list)
+        #     # IGNORE, if extracted text is just 2 character
+        #     if len(extracted_text) <= 2:
+        #         continue
+        #     detected_polygons.append(bbox)
 
-        normalized_array = self.normalize_pixel_arr(ds.pixel_array)
-
-        extracted = self.extract_from_pixel_array(normalized_array)
+        extracted_note, bbox_map, text_position_map = self.extract_texts_as_note(ds.pixel_array)
         detected_polygons = []
         updated = False
-        if extracted[0] and len(extracted[0]) > 0:
-            for e in extracted[0]:
-                bbox = e[0]
-                text = e[1][0]
 
-                detected_phi = self.detector.detect_entities(text)
-                if len(detected_phi) > 0:
-                    extracted_txt_list = [entity[0] for entity in detected_phi]
-                    extracted_text = "".join(extracted_txt_list)
-                    # IGNORE, if extracted text is just 2 character
-                    if len(extracted_text) <= 2:
-                        continue
-                    detected_polygons.append(bbox)
+        if extracted_note != '':                              
+            # might contain \n inside the entity and 
+            # next bbox might be overlooked
+            detected_phi = self.detector.detect_entities(extracted_note)
+            detected_polygons = self.get_associated_bounding_boxes(detected_phi, bbox_map, text_position_map)
+
             
-            if len(detected_polygons) > 0:
-                img = ds.pixel_array.copy()        
-                drawn_img = self.draw_filled_polygons(img, detected_polygons)
+        if len(detected_polygons) > 0:
+            img = ds.pixel_array.copy()        
+            drawn_img = self.draw_filled_polygons(img, detected_polygons)
 
-                ds.PixelData = drawn_img
-                updated = True
+            ds.PixelData = drawn_img
+            updated = True
         
         return updated
 
