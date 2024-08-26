@@ -35,6 +35,15 @@ def replace_element_value(dataset, tag, value):
     if element is not None:
         element.value = value
 
+def count_words(s):
+    # Use a regular expression to split the string on spaces or separator characters
+    words = re.split(r'[ \-_^\n]+', s)
+    
+    # Filter out empty strings that might occur due to consecutive separators
+    words = [word for word in words if word]
+    
+    return len(words)
+
 class DCMTCIAAnonymizer(DCMPS33Anonymizer):
     def __init__(
             self, 
@@ -43,6 +52,7 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
             notes_phi_detector: DcmRobustPHIDetector = None,
             rules_json_path: str = TCIA_DEID_ATTRS_JSON,
             apply_custom_actions: bool = True,
+            soft_detection: bool = True
         ):        
         super().__init__(phi_detector)       
 
@@ -64,6 +74,7 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
         self.tag_seperator = ',\n'
         self.rules_json_path = rules_json_path
         self.apply_custom_actions = apply_custom_actions
+        self.soft_detection = soft_detection
 
         self.custom_actions = {
             "(0x0008, 0x2111)": self.tcia_to_ps3_actions_map['replace'],    # Derivation Description
@@ -261,6 +272,38 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
                     self.history[element.tag] = empty.__name__
         
         return
+    
+    def apply_soft_detections(self, dataset: pydicom.Dataset):
+        accept_vr_only = ("LO", "ST", "LT")
+        ignore_tags_name = ["Protocol Name", "Private Creator", "Private tag data", "Manufacturer"]
+        filtered_tags = []
+
+        for tag_tuple in self.ignored_tags:
+            tag =  tag_tuple[0]
+            element = dataset.get(tag)
+            # skip incase tags already deleted          
+            if element is None:
+                continue
+            if element.VR in accept_vr_only and element.name not in ignore_tags_name:
+                n_words = count_words(element.value)
+                if n_words > 1:
+                    filtered_tags.append(tag)
+        
+        all_texts, text_tag_mapping = self.tags_to_note(filtered_tags, dataset)
+        
+        if len(all_texts) > 0:
+            tags_w_entities = self.notes_phi_detector.detect_enitity_tags_from_text(all_texts, text_tag_mapping)
+            for tag in tags_w_entities:
+                element = dataset.get(tag)
+                deid_val = self.notes_phi_detector.deid_element_from_entity_values(element, tags_w_entities[tag])
+                ### Hard CODE rule for `Study Description`
+                if tag == (0x0008, 0x1030):
+                    if deid_val.lower().endswith("for"):
+                        deid_val = deid_val[:-3].strip()
+                        
+                element.value = deid_val
+                self.history[element.tag] = replace.__name__
+        return
 
 
 
@@ -296,11 +339,15 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
 
         super().anonymize_dataset(dataset, extra_anonymization_rules, delete_private_tags=False)
 
-        if self.notes_phi_detector:
+        if not self.soft_detection:
             self.deidentify_all_ignored_tags_as_note(dataset)
         
         if self.apply_custom_actions:
             self.empty_remaining_pn_vr(dataset)
+
+        if self.soft_detection:
+            self.apply_soft_detections(dataset)
+
             
 
         

@@ -67,7 +67,8 @@ class Anonymizer:
         # self.anonymizer = DCMPS33Anonymizer(phi_detector=phi_detector)
         self.anonymizer = DCMTCIAAnonymizer(
             phi_detector=None,
-            notes_phi_detector=None,
+            notes_phi_detector=phi_detector,
+            soft_detection=True
         )
         self.img_anonymizer = DCMImageAnonymizer(phi_detector=phi_detector)
 

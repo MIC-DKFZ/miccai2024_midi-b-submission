@@ -88,12 +88,13 @@ class DCMImageAnonymizer:
 
         return img
     
-    def extract_texts_as_note(self, pixel_array):
+    def extract_texts_as_note(self, pxl_arr: np.ndarray, normalize_arr: bool = True):
         texts = ''
         bbox_map = {}
         text_position_map = {}
-        normalized = self.normalize_pixel_arr(pixel_array)
-        extracted = self.extract_from_pixel_array(normalized)
+        if normalize_arr:
+            pxl_arr = self.normalize_pixel_arr(pxl_arr)
+        extracted = self.extract_from_pixel_array(pxl_arr)
 
         if extracted[0] and len(extracted[0]) > 0:           
             for e in extracted[0]:
@@ -124,27 +125,12 @@ class DCMImageAnonymizer:
                     break
         return selected_bbox
 
-    
-    def anonymize_dicom_image_data(self, ds: pydicom.Dataset): 
-        try:
-            pixel_shape = ds.pixel_array.shape
-        except AttributeError as e:
-            self.logger.warning(
-                str(e)
-            )
-            return False
-        
-        if len(pixel_shape) > 3:
-            self.logger.warning(
-                "DICOM pixel array found with shape {} of Modality {}".format(str(ds.pixel_array.shape), ds.Modality)
-            )
-            return False
-        elif len(pixel_shape) == 3 and pixel_shape[2] != 3:
-            self.logger.warning(
-                "DICOM pixel array found with shape {} of Modality {}".format(str(ds.pixel_array.shape), ds.Modality)
-            )
-            return False
-        
+    def anonymize_single_slice(self, img_arr: np.ndarray):
+        # normalized = self.normalize_pixel_arr(img_arr)
+        extracted_note, bbox_map, text_position_map = self.extract_texts_as_note(img_arr)
+        detected_polygons = []
+        updated = False
+
         ## Earlier Implementation
         # detected_phi = self.detector.detect_entities(text)
         # if len(detected_phi) > 0:
@@ -154,11 +140,6 @@ class DCMImageAnonymizer:
         #     if len(extracted_text) <= 2:
         #         continue
         #     detected_polygons.append(bbox)
-
-        extracted_note, bbox_map, text_position_map = self.extract_texts_as_note(ds.pixel_array)
-        detected_polygons = []
-        updated = False
-
         if extracted_note != '':                              
             # might contain \n inside the entity and 
             # next bbox might be overlooked
@@ -167,11 +148,46 @@ class DCMImageAnonymizer:
 
             
         if len(detected_polygons) > 0:
-            img = ds.pixel_array.copy()        
-            drawn_img = self.draw_filled_polygons(img, detected_polygons)
-
-            ds.PixelData = drawn_img
+            # img = ds.pixel_array.copy()       
+            img_arr = self.draw_filled_polygons(img_arr, detected_polygons)
             updated = True
+        
+        return img_arr, updated
+    
+    def process_3d_image_array(self, img_arr):
+        img_shape = img_arr.shape
+        if img_shape[2] == 3:
+            return self.anonymize_single_slice(img_arr)
+
+        updated = False
+        for i in range(img_shape[0]):
+            img_arr[i], isupdated = self.anonymize_single_slice(img_arr[i])
+            if isupdated and not updated:
+                updated = isupdated
+
+        return img_arr, updated
+
+    
+    def anonymize_dicom_image_data(self, ds: pydicom.Dataset):
+        pixel_data = ds.get("pixel_array")
+        if pixel_data is None:
+            return False
+        
+        pixel_shape = pixel_data.shape        
+        if len(pixel_shape) > 3:
+            self.logger.warning(
+                "Unhandled Shaped DICOM pixel array with shape {} of Modality {}".format(str(ds.pixel_array.shape), ds.Modality)
+            )
+            return False
+        
+        img = ds.pixel_array.copy()
+        if len(pixel_shape) == 3:
+            drawn_img, updated = self.process_3d_image_array(img)
+        else:
+            drawn_img, updated = self.anonymize_single_slice(img)
+            
+        if updated > 0:
+            ds.PixelData = drawn_img
         
         return updated
 

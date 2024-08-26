@@ -12,3 +12,7 @@ def display_dicoms_grid(dicoms: list, rows: int = 2, cols: int = 3):
 
 def display_dicom(ds):
     plt.imshow(ds.pixel_array, cmap=plt.cm.bone) 
+
+
+def display_pixel_arry(pxl_array):
+    plt.imshow(pxl_array, cmap=plt.cm.bone)

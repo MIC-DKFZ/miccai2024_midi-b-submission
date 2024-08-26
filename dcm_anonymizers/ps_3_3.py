@@ -383,7 +383,10 @@ class DCMPS33Anonymizer:
             basetag = int_tuple_to_basetag(tag)
             if basetag in self.history:
                 continue
-
+            
+            ## TODO add the action taken on 
+            # range tag element to the history and 
+            # remove the tag from ignored tags 
             def range_callback(dataset, data_element):
                 if (
                     data_element.tag.group & tag[2] == tag[0]
@@ -458,6 +461,7 @@ class DCMPS33Anonymizer:
     
     def anonymize(self, input_path: str, output_path: str, opt_history: dict = {}, custom_actions: dict = {}):
         self.history = opt_history
+        self.ignored_tags = []
 
         simpledicomanonymizer.anonymize_dicom_file(
             in_file=str(input_path),
