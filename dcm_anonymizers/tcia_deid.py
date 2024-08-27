@@ -12,9 +12,12 @@ from dicomanonymizer.simpledicomanonymizer import (
     empty, delete, delete_or_empty,
     keep
 )
+import pydicom.tag
 
 from dcm_anonymizers.phi_detectors import DcmPHIDetector, DcmRobustPHIDetector
 from dcm_anonymizers.ps_3_3 import DCMPS33Anonymizer, replace_with_value
+from dcm_anonymizers.utils import parse_date_string
+from dcm_anonymizers.private_tags_extractor import PrivateTagsExtractor
 
 TCIA_DEID_ATTRS_JSON = 'dcm_anonymizers/tcia_deid_attrs.json'
 SHIFT_DATE_OFFSET = 120
@@ -52,7 +55,8 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
             notes_phi_detector: DcmRobustPHIDetector = None,
             rules_json_path: str = TCIA_DEID_ATTRS_JSON,
             apply_custom_actions: bool = True,
-            soft_detection: bool = True
+            soft_detection: bool = True,
+            private_tags_extractor: PrivateTagsExtractor = None,
         ):        
         super().__init__(phi_detector)       
 
@@ -62,6 +66,7 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
             'remove': self.tcia_delete,
             'keep': self.tcia_keep,
             'incrementdate': replace,
+            'incrementdateforced': self.tcia_replace_date_time,
             'hashuid': replace_UID,
             'time': self.tcia_keep,
             'empty': empty,
@@ -75,6 +80,7 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
         self.rules_json_path = rules_json_path
         self.apply_custom_actions = apply_custom_actions
         self.soft_detection = soft_detection
+        self.private_tags_extractor = PrivateTagsExtractor('docs/TCIAPrivateTagKB-02-01-2024-formatted.csv')
 
         self.custom_actions = {
             "(0x0008, 0x2111)": self.tcia_to_ps3_actions_map['replace'],    # Derivation Description
@@ -120,6 +126,26 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
         element = dataset.get(tag)
         if element is not None:
             self.tcia_keep_element(element)
+    
+    def tcia_replace_date_time(self, dataset, tag):
+        element = dataset.get(tag)
+        if element is not None:
+            if element.VR in ('DA', 'DT', 'TM'):
+                self.custom_replace_date_time_element(element)
+            else:
+                parsed = False
+                try:
+                    parsed_date, _ = parse_date_string(str(element.value))
+                    parsed = True
+                except Exception as e:
+                    self.logger.warning(f"Could not able to parse as date {element.value}")
+
+                if parsed:
+                    newval = self.shift_date(str(element.value), days=self.shift_date_offset)
+                    if element.VR in ('SL', 'UL', 'US', 'SS'):
+                        element.value = int(newval)
+                    else:
+                        element.value = newval
     
     def tcia_delete_element(self, dataset, element):
         # dont delete if it does not contain any value
@@ -284,7 +310,7 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
             # skip incase tags already deleted          
             if element is None:
                 continue
-            if element.VR in accept_vr_only and element.name not in ignore_tags_name:
+            if element.VR in accept_vr_only and element.name not in ignore_tags_name and element.VM == 1:
                 n_words = count_words(element.value)
                 if n_words > 1:
                     filtered_tags.append(tag)
@@ -304,6 +330,62 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
                 element.value = deid_val
                 self.history[element.tag] = replace.__name__
         return
+    
+    @staticmethod
+    def extract_private_groups_n_creators(dataset):
+        creators = []
+        groups = []
+        for element in dataset:
+            if element.VR == 'OW':
+                continue
+            if element.tag.is_private:
+                groups.append(f"{element.tag.group:04x}")
+                if element.name == 'Private Creator' and element.value not in creators:                
+                    creators.append(element.value)
+
+        groups = list(set(groups))
+
+        return groups, creators
+
+    def get_private_tags_anonymize_actions(self, dataset:pydicom.Dataset):
+        groups, creators = DCMTCIAAnonymizer.extract_private_groups_n_creators(dataset)
+        df_filtered_by_active_groups = self.private_tags_extractor.filter_by_tag_group(groups)
+        
+        self.private_tags_extractor.filtered_private_tag_df = df_filtered_by_active_groups
+
+        private_tags_actions = {}
+
+        disposition_val_to_tcia_actions = {
+            'k': 'keep',
+            'd': 'remove',
+            'h': 'hashuid',
+            'o': 'incrementdate',
+            'oi': 'incrementdateforced',
+        }
+
+        for element in dataset:
+            if element.VR == 'OW':
+                continue
+            if element.tag.is_private:
+                # tag_string = f"(0x{element.tag.group:04x}, 0x{element.tag.element:04x})"
+
+                all_patterns = self.private_tags_extractor.search_patterns_from_element(element, creators)        
+                filtered = self.private_tags_extractor.get_filtered_rows_from_patterns(all_patterns, element)
+
+                # For debugging, can be deleted later
+                if len(filtered) == 0 and element.name != 'Private Creator':
+                    self.logger.debug(element, "\nNo rules can be extracted for the above private tag.")
+
+                disposition_val = self.private_tags_extractor.get_private_disposition_from_rows(filtered, element)
+                if disposition_val in disposition_val_to_tcia_actions.keys():
+                    private_tags_actions[element.tag] = self.tcia_to_ps3_actions_map[disposition_val_to_tcia_actions[disposition_val]]
+                else:
+                    private_tags_actions[element.tag] = None
+
+        
+        self.private_tags_extractor.filtered_private_tag_df = None
+
+        return private_tags_actions
 
 
 
@@ -319,34 +401,43 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
             custom_actions = self.get_custom_actions()
             private_tags_actions.update(custom_actions)
 
-        tags_to_delete, tags_to_replce = self.extract_private_tags(dataset)
-        for tag in tags_to_delete:
-            element = dataset.get(tag)
-            private_tags_actions[(element.tag.group, element.tag.element)] = self.tcia_delete
+        # tags_to_delete, tags_to_replce = self.extract_private_tags(dataset)
+        # for tag in tags_to_delete:
+        #     element = dataset.get(tag)
+        #     private_tags_actions[(element.tag.group, element.tag.element)] = self.tcia_delete
 
-        if self.detector:
-            all_private_texts, text_tag_mapping = self.tags_to_note(tags_to_replce, dataset)
-            tags_w_entities = self.detector.detect_enitity_tags_from_text(all_private_texts, text_tag_mapping)
-            for tag in tags_w_entities:
-                element = dataset.get(tag)
-                deid_val = self.detector.deid_element_from_entity_values(element, tags_w_entities[tag])
-                private_tags_actions[(element.tag.group, element.tag.element)] = replace_with_value([deid_val])
-        else:
-            for tag in tags_to_replce:
-                self.ignored_tags.append((tag, 'replace'))
+        # if self.detector:
+        #     all_private_texts, text_tag_mapping = self.tags_to_note(tags_to_replce, dataset)
+        #     tags_w_entities = self.detector.detect_enitity_tags_from_text(all_private_texts, text_tag_mapping)
+        #     for tag in tags_w_entities:
+        #         element = dataset.get(tag)
+        #         deid_val = self.detector.deid_element_from_entity_values(element, tags_w_entities[tag])
+        #         private_tags_actions[(element.tag.group, element.tag.element)] = replace_with_value([deid_val])
+        # else:
+        #     for tag in tags_to_replce:
+        #         self.ignored_tags.append((tag, 'replace'))
         
         extra_anonymization_rules.update(private_tags_actions)
 
         super().anonymize_dataset(dataset, extra_anonymization_rules, delete_private_tags=False)
 
-        if not self.soft_detection:
-            self.deidentify_all_ignored_tags_as_note(dataset)
+        # if not self.soft_detection:
+        #     self.deidentify_all_ignored_tags_as_note(dataset)
         
         if self.apply_custom_actions:
             self.empty_remaining_pn_vr(dataset)
 
         if self.soft_detection:
             self.apply_soft_detections(dataset)
+
+        if self.private_tags_extractor:
+            private_tag_actions = self.get_private_tags_anonymize_actions(dataset)
+            for tag in private_tag_actions.keys():
+                action = private_tag_actions[tag]
+                if action is not None:
+                    action(dataset, tag)
+                    self.history[tag] = action.__name__
+
 
             
 

@@ -25,6 +25,7 @@ from dcm_anonymizers.phi_detectors import DcmPHIDetector, DcmRobustPHIDetector
 from dcm_anonymizers.img_anonymizers import DCMImageAnonymizer
 from dcm_anonymizers.ps_3_3 import DCMPS33Anonymizer, replace_with_value, format_action_dict
 from dcm_anonymizers.tcia_deid import DCMTCIAAnonymizer
+from dcm_anonymizers.private_tags_extractor import PrivateTagsExtractor
 
 class Anonymizer:
     def __init__(self, input_path: str, output_path: str, preserve_dir_struct: bool = False) -> None:
@@ -64,11 +65,13 @@ class Anonymizer:
 
         # initialize model
         phi_detector = DcmRobustPHIDetector()
+        ptags_extr = PrivateTagsExtractor('docs/TCIAPrivateTagKB-02-01-2024-formatted.csv')
         # self.anonymizer = DCMPS33Anonymizer(phi_detector=phi_detector)
         self.anonymizer = DCMTCIAAnonymizer(
             phi_detector=None,
             notes_phi_detector=phi_detector,
-            soft_detection=True
+            soft_detection=True,
+            private_tags_extractor=ptags_extr
         )
         self.img_anonymizer = DCMImageAnonymizer(phi_detector=phi_detector)
 

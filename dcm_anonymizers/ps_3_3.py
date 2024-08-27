@@ -101,16 +101,36 @@ class DCMPS33Anonymizer:
         simpledicomanonymizer.anonymize_dataset = self.anonymize_dataset
 
 
+    # def shift_date(self, date_string, days=0, hours=0, minutes=0, seconds=0, date_only=True):
+    #     if date_string == '':
+    #         return date_string
+
+    #     # Parse the date string
+    #     original_date = parse_date_string(date_string)
+
+    #     # extract the miliseconds digits if provided
+    #     d = Decimal(date_string)
+    #     milisecs_digits = abs(d.as_tuple().exponent)
+        
+    #     # Create a timedelta object based on the provided offset values
+    #     offset = timedelta(days=days, hours=hours, minutes=minutes, seconds=seconds)
+        
+    #     # Shift the date by the offset
+    #     new_date = original_date + offset
+
+    #     if date_only:
+    #         return new_date.date().strftime("%Y%m%d")
+    #     elif milisecs_digits > 0:        
+    #         return new_date.strftime("%Y%m%d%H%M%S.%f")
+    #     else:
+    #         return new_date.strftime("%Y%m%d%H%M%S")
+
     def shift_date(self, date_string, days=0, hours=0, minutes=0, seconds=0, date_only=True):
         if date_string == '':
             return date_string
 
         # Parse the date string
-        original_date = parse_date_string(date_string)
-
-        # extract the miliseconds digits if provided
-        d = Decimal(date_string)
-        milisecs_digits = abs(d.as_tuple().exponent)
+        original_date, date_format = parse_date_string(date_string)
         
         # Create a timedelta object based on the provided offset values
         offset = timedelta(days=days, hours=hours, minutes=minutes, seconds=seconds)
@@ -120,10 +140,8 @@ class DCMPS33Anonymizer:
 
         if date_only:
             return new_date.date().strftime("%Y%m%d")
-        elif milisecs_digits > 0:        
-            return new_date.strftime("%Y%m%d%H%M%S.%f")
         else:
-            return new_date.strftime("%Y%m%d%H%M%S")
+            return new_date.strftime(date_format)
 
     
     def get_UID(self, old_uid: str) -> str:

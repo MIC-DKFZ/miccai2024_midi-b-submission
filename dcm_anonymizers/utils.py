@@ -57,7 +57,8 @@ def parse_date_string(date_string):
     # Try to parse the date string using the appropriate format
     for date_format in date_formats:
         try:
-            return datetime.strptime(date_string, date_format)
+            formatted = datetime.strptime(date_string, date_format)
+            return formatted, date_format
         except ValueError:
             continue
     

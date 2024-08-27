@@ -119,7 +119,8 @@ def find_mismatched_in_pixel_data(imganonymizer: DCMImageAnonymizer, dcm_deid_gt
 
 
 def evaluate_series_by_index(
-        series_idx, loader, series_output_path_map, imganonymizer: DCMImageAnonymizer
+        series_idx, loader, series_output_path_map, imganonymizer: DCMImageAnonymizer,
+        evaluate_pixel_data: bool = True
     ):
 
     (rawdcm, metadata), (deiddcm, deiddcm_metadata) = loader.get_raw_n_deid_patient(series_idx, include_metadata=True)
@@ -157,12 +158,13 @@ def evaluate_series_by_index(
                 mismatching_tags[tag] = 1
 
         # image anonymization evaluation
-        n_img_mismatched, total_img_txts = find_mismatched_in_pixel_data(imganonymizer, deid_gt, anonymized)
-        total_elements += total_img_txts
-        total_mismatched += n_img_mismatched
+        if evaluate_pixel_data:
+            n_img_mismatched, total_img_txts = find_mismatched_in_pixel_data(imganonymizer, deid_gt, anonymized)
+            total_elements += total_img_txts
+            total_mismatched += n_img_mismatched
 
-        if n_img_mismatched > 0:
-            mismatching_tags['text_from_image'] = n_img_mismatched
+            if n_img_mismatched > 0:
+                mismatching_tags['text_from_image'] = n_img_mismatched
 
     return total_elements, total_mismatched, mismatching_tags
 
@@ -179,7 +181,7 @@ if __name__ == "__main__":
     detector = DcmRobustPHIDetector()
     img_anonymizer = DCMImageAnonymizer(phi_detector=detector)
 
-    anonymizer_output_path = Path(root_data_dir, 'anonymizer-output/Pseudo-PHI-DICOM-Data-7-soft-detection')
+    anonymizer_output_path = Path(root_data_dir, 'anonymizer-output/Pseudo-PHI-DICOM-Data-8-private-tags')
 
     path_mapping_file = Path(anonymizer_output_path, 'mappings/path_mapping.csv')
 
@@ -195,7 +197,7 @@ if __name__ == "__main__":
 
     for i in range(total_series):
         current_elements, current_mismatched, current_mismatching_tags = evaluate_series_by_index(
-            i, loader, series_output_map, img_anonymizer
+            i, loader, series_output_map, img_anonymizer, evaluate_pixel_data=False
         )
         total_elements += current_elements
         total_mismatched += current_mismatched
