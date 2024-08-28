@@ -1,4 +1,6 @@
 import re
+import json
+import pydicom
 from difflib import SequenceMatcher
 
 import pandas as pd
@@ -11,6 +13,8 @@ def replace_non_alphanumeric_with_space(input_string):
     # Replace all non-alphanumeric characters with a space
     result = re.sub(r'[^a-zA-Z0-9]', ' ', input_string)
     return result
+
+PRIVATE_TAGS_DICT = 'dcm_anonymizers/tcia_private_tags_dict.json'
 
 class PrivateTagsExtractor:
     def __init__(self, private_tags_dict_path: str):
@@ -92,3 +96,54 @@ class PrivateTagsExtractor:
             disposition_val = first_row['private_disposition']
             
         return disposition_val.lower().strip()
+    
+
+class PrivateTagsExtractorV2:
+    def __init__(self, private_tags_dict_path: str = PRIVATE_TAGS_DICT):
+        self.private_tag_dict_path = private_tags_dict_path
+        self.private_tag_dict = None
+
+        self._load_private_tag_dict()
+
+    def _load_private_tag_dict(self):
+        with open(self.private_tag_dict_path) as f:
+            self.private_tag_dict = json.load(f)
+    
+    @staticmethod
+    def get_element_block_tag(element, private_block_name=None):
+        group_str = f"{element.tag.group:04x}"   # Output: '0010'
+        element_str = f"{element.tag.element:04x}" # Output: '0010'
+
+        if private_block_name is None:
+            return f"({group_str},{element_str})"
+        else:
+            return f"({group_str},{private_block_name.lower()},{element_str[-2:]})"
+
+    @staticmethod
+    def get_element_block_tag_with_parents(element, private_block_name=None, parent_blocks: list = []):
+        parent_block_str = ""
+        for idx, parent_tuple in enumerate(parent_blocks):
+            parent_block_tag = PrivateTagsExtractorV2.get_element_block_tag(parent_tuple[0], parent_tuple[1])
+            parent_block_str += f"{parent_block_tag}[<{idx}>]"
+
+        element_block_tag = PrivateTagsExtractorV2.get_element_block_tag(element, private_block_name)
+
+        vr_val = element.VR
+
+        # if vr value like VR.UN, split and take last one
+        vr_splits = vr_val.split('.')
+        if len(vr_splits) > 0:
+            vr_val = vr_splits[-1]
+
+        return f"{parent_block_str}{element_block_tag}_{vr_val}"
+
+    def get_dispoistion_val_from_block_tag(self, block_tag: str, element: pydicom.DataElement):
+        if element.name.lower() == "private creator":
+            return 'k'
+        
+        private_rules = self.private_tag_dict.get(block_tag)
+        if private_rules is None:
+            print(f"Warning!!! '{block_tag}': {element.name} not found in private tags dictionary")
+            return 'k'
+
+        return private_rules['private_disposition']

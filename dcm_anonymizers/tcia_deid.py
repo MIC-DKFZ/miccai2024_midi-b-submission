@@ -3,6 +3,7 @@ import json
 from ast import literal_eval
 
 import pydicom
+from pydicom import Sequence
 
 from dicomanonymizer import simpledicomanonymizer, actions_map_name_functions
 from dicomanonymizer.simpledicomanonymizer import (
@@ -17,7 +18,7 @@ import pydicom.tag
 from dcm_anonymizers.phi_detectors import DcmPHIDetector, DcmRobustPHIDetector
 from dcm_anonymizers.ps_3_3 import DCMPS33Anonymizer, replace_with_value
 from dcm_anonymizers.utils import parse_date_string
-from dcm_anonymizers.private_tags_extractor import PrivateTagsExtractor
+from dcm_anonymizers.private_tags_extractor import PrivateTagsExtractorV2
 
 TCIA_DEID_ATTRS_JSON = 'dcm_anonymizers/tcia_deid_attrs.json'
 SHIFT_DATE_OFFSET = 120
@@ -56,7 +57,7 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
             rules_json_path: str = TCIA_DEID_ATTRS_JSON,
             apply_custom_actions: bool = True,
             soft_detection: bool = True,
-            private_tags_extractor: PrivateTagsExtractor = None,
+            private_tags_extractor: PrivateTagsExtractorV2 = None,
         ):        
         super().__init__(phi_detector)       
 
@@ -80,7 +81,15 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
         self.rules_json_path = rules_json_path
         self.apply_custom_actions = apply_custom_actions
         self.soft_detection = soft_detection
-        self.private_tags_extractor = PrivateTagsExtractor('docs/TCIAPrivateTagKB-02-01-2024-formatted.csv')
+        self.private_tags_extractor = private_tags_extractor
+
+        self.disposition_val_to_tcia_actions = {
+            'k': 'keep',
+            'd': 'remove',
+            'h': 'hashuid',
+            'o': 'incrementdate',
+            'oi': 'incrementdateforced',
+        }
 
         self.custom_actions = {
             "(0x0008, 0x2111)": self.tcia_to_ps3_actions_map['replace'],    # Derivation Description
@@ -347,45 +356,82 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
 
         return groups, creators
 
-    def get_private_tags_anonymize_actions(self, dataset:pydicom.Dataset):
-        groups, creators = DCMTCIAAnonymizer.extract_private_groups_n_creators(dataset)
-        df_filtered_by_active_groups = self.private_tags_extractor.filter_by_tag_group(groups)
+    # def get_private_tags_anonymize_actions(self, dataset:pydicom.Dataset):
+    #     groups, creators = DCMTCIAAnonymizer.extract_private_groups_n_creators(dataset)
+    #     df_filtered_by_active_groups = self.private_tags_extractor.filter_by_tag_group(groups)
         
-        self.private_tags_extractor.filtered_private_tag_df = df_filtered_by_active_groups
+    #     self.private_tags_extractor.filtered_private_tag_df = df_filtered_by_active_groups
 
-        private_tags_actions = {}
+    #     private_tags_actions = {}
 
-        disposition_val_to_tcia_actions = {
-            'k': 'keep',
-            'd': 'remove',
-            'h': 'hashuid',
-            'o': 'incrementdate',
-            'oi': 'incrementdateforced',
-        }
+    #     disposition_val_to_tcia_actions = {
+    #         'k': 'keep',
+    #         'd': 'remove',
+    #         'h': 'hashuid',
+    #         'o': 'incrementdate',
+    #         'oi': 'incrementdateforced',
+    #     }
 
-        for element in dataset:
-            if element.VR == 'OW':
-                continue
-            if element.tag.is_private:
-                # tag_string = f"(0x{element.tag.group:04x}, 0x{element.tag.element:04x})"
+    #     for element in dataset:
+    #         if element.VR == 'OW':
+    #             continue
+    #         if element.tag.is_private:
+    #             # tag_string = f"(0x{element.tag.group:04x}, 0x{element.tag.element:04x})"
 
-                all_patterns = self.private_tags_extractor.search_patterns_from_element(element, creators)        
-                filtered = self.private_tags_extractor.get_filtered_rows_from_patterns(all_patterns, element)
+    #             all_patterns = self.private_tags_extractor.search_patterns_from_element(element, creators)        
+    #             filtered = self.private_tags_extractor.get_filtered_rows_from_patterns(all_patterns, element)
 
-                # For debugging, can be deleted later
-                if len(filtered) == 0 and element.name != 'Private Creator':
-                    self.logger.debug(element, "\nNo rules can be extracted for the above private tag.")
+    #             # For debugging, can be deleted later
+    #             if len(filtered) == 0 and element.name != 'Private Creator':
+    #                 self.logger.debug(f"{element.name} {element.tag} {element.VR} {str(element.value)}\nNo rules can be extracted for the above private tag.")
 
-                disposition_val = self.private_tags_extractor.get_private_disposition_from_rows(filtered, element)
-                if disposition_val in disposition_val_to_tcia_actions.keys():
-                    private_tags_actions[element.tag] = self.tcia_to_ps3_actions_map[disposition_val_to_tcia_actions[disposition_val]]
-                else:
-                    private_tags_actions[element.tag] = None
+    #             disposition_val = self.private_tags_extractor.get_private_disposition_from_rows(filtered, element)
+    #             if disposition_val in disposition_val_to_tcia_actions.keys():
+    #                 private_tags_actions[element.tag] = self.tcia_to_ps3_actions_map[disposition_val_to_tcia_actions[disposition_val]]
+    #             else:
+    #                 private_tags_actions[element.tag] = None
 
+    #             # if element.VR == 'SQ':
+    #             #     self.logger.debug(f"Sequence Private Tag found {str(element)}")
         
-        self.private_tags_extractor.filtered_private_tag_df = None
+    #     self.private_tags_extractor.filtered_private_tag_df = None
 
-        return private_tags_actions
+    #     return private_tags_actions
+
+    def walk_and_anonymize_private_dataset(self, dataset, parent_elements=[], is_root=True):
+        private_creator_block_name = None
+        for elem in dataset:
+            tag = elem.tag
+            value = elem.value
+            name = elem.name
+
+            # Check if the root element is private
+            if is_root:
+                if not elem.tag.is_private:
+                    continue
+
+            if name == "Private Creator":
+                private_creator_block_name = value
+            elif len(parent_elements) > 0:
+                immidiate_parent = parent_elements[-1]
+                private_creator_block_name = immidiate_parent[1]
+            
+            
+            # Process the element
+            if isinstance(value, Sequence):
+                # If the value is a Sequence, recursively traverse each Dataset in the Sequence
+                updated_parent_elements = parent_elements.copy()
+                updated_parent_elements.append((elem, private_creator_block_name))
+                for i, item in enumerate(value):
+                    self.walk_and_anonymize_private_dataset(item, parent_elements=updated_parent_elements, is_root=False)
+            else:
+                # process the data element
+                block_tag = self.private_tags_extractor.get_element_block_tag_with_parents(elem, private_creator_block_name, parent_elements)
+                private_disposition = self.private_tags_extractor.get_dispoistion_val_from_block_tag(block_tag, elem)
+                action = self.tcia_to_ps3_actions_map[self.disposition_val_to_tcia_actions[private_disposition]]
+                if action is not None:
+                    action(dataset, tag)
+                    self.history[tag] = action.__name__
 
 
 
@@ -431,12 +477,14 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
             self.apply_soft_detections(dataset)
 
         if self.private_tags_extractor:
-            private_tag_actions = self.get_private_tags_anonymize_actions(dataset)
-            for tag in private_tag_actions.keys():
-                action = private_tag_actions[tag]
-                if action is not None:
-                    action(dataset, tag)
-                    self.history[tag] = action.__name__
+            # private_tag_actions = self.get_private_tags_anonymize_actions(dataset)
+            # for tag in private_tag_actions.keys():
+            #     action = private_tag_actions[tag]
+            #     if action is not None:
+            #         action(dataset, tag)
+            #         self.history[tag] = action.__name__
+            self.walk_and_anonymize_private_dataset(dataset)
+
 
 
             

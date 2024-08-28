@@ -25,7 +25,7 @@ from dcm_anonymizers.phi_detectors import DcmPHIDetector, DcmRobustPHIDetector
 from dcm_anonymizers.img_anonymizers import DCMImageAnonymizer
 from dcm_anonymizers.ps_3_3 import DCMPS33Anonymizer, replace_with_value, format_action_dict
 from dcm_anonymizers.tcia_deid import DCMTCIAAnonymizer
-from dcm_anonymizers.private_tags_extractor import PrivateTagsExtractor
+from dcm_anonymizers.private_tags_extractor import PrivateTagsExtractorV2
 
 class Anonymizer:
     def __init__(self, input_path: str, output_path: str, preserve_dir_struct: bool = False) -> None:
@@ -65,7 +65,7 @@ class Anonymizer:
 
         # initialize model
         phi_detector = DcmRobustPHIDetector()
-        ptags_extr = PrivateTagsExtractor('docs/TCIAPrivateTagKB-02-01-2024-formatted.csv')
+        ptags_extr = PrivateTagsExtractorV2()
         # self.anonymizer = DCMPS33Anonymizer(phi_detector=phi_detector)
         self.anonymizer = DCMTCIAAnonymizer(
             phi_detector=None,
@@ -244,8 +244,9 @@ class Anonymizer:
                     count += 1
                     continue
                 if not self.anonymized_file_exists(dcm, dir):
+                    # print(dcm)
                     _, outfile = self.anonymize_metadata_on_file(dcm, dir, patient_attrs_action)
-                    #self.logger.debug(f"{history}")
+                    #self.logger.debug(f"{history}")                    
                     self.anonymize_image_data_on_file(outfile, replace=True)
                     progress_bar.update(1)
                     count += 1

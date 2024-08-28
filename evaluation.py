@@ -181,7 +181,7 @@ if __name__ == "__main__":
     detector = DcmRobustPHIDetector()
     img_anonymizer = DCMImageAnonymizer(phi_detector=detector)
 
-    anonymizer_output_path = Path(root_data_dir, 'anonymizer-output/Pseudo-PHI-DICOM-Data-8-private-tags')
+    anonymizer_output_path = Path(root_data_dir, 'anonymizer-output/Pseudo-PHI-DICOM-Data-9-private-tags-full')
 
     path_mapping_file = Path(anonymizer_output_path, 'mappings/path_mapping.csv')
 
