@@ -159,12 +159,27 @@ class DCMPS33Anonymizer:
         The replaced value is kept in a dictionary link to the initial element.value in order to automatically
         apply the same replaced value if we have an other UID with the same value
         """
-        if isinstance(element.value, MultiValue):
+        # ignore some UID tags coming from sequence replace
+        # eg. Referenced SOP Class UID UI (0008, 1150)
+        ignore_uid_tags = [(0x0008, 0x1150)]
+
+        # earliervalue = str(element.value)
+
+        if element.tag in ignore_uid_tags:
+            pass
+        elif isinstance(element.value, MultiValue):
             # Example of multi-value UID situation: IrradiationEventUID, (0008,3010)
             for k, v in enumerate(element.value):
                 element.value[k] = self.get_UID(v)
         else:
             element.value = self.get_UID(element.value)
+
+        # changedval = str(element.value)
+        # print("==================================")
+        # print(element)
+        # print(earliervalue)
+        # print(changedval)
+        # print("==================================")
 
 
     def get_ID(self, old_id: str) -> str:
@@ -234,9 +249,12 @@ class DCMPS33Anonymizer:
             else:
                 self.ignored_tags.append((element.tag, 'replace'))
         elif element.VR == "UI":
-            replace_element_UID(element)
-        elif element.VR in ("DS", "IS"):            
-            element.value = "0"
+            self.replace_element_UID(element)
+        elif element.VR in ("DS", "IS"):        
+            # element.value = "0"
+            # ignore it now to have a date check for later
+            # if date. replace it else keep
+            self.ignored_tags.append((element.tag, 'replace'))
         elif element.VR in ("FD", "FL", "SS", "US", "SL", "UL"):
             element.value = 0
         elif element.VR in ("DT", "DA", "TM"):
@@ -393,7 +411,7 @@ class DCMPS33Anonymizer:
                         sequences.append(item)
                         walk_sequences(item) 
 
-        walk_sequences(dataset)   
+        walk_sequences(dataset)
 
         for tag, action in current_anonymization_actions.items():
             # check current tag already exists in the 

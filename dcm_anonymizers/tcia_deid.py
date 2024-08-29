@@ -68,7 +68,7 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
             'keep': self.tcia_keep,
             'incrementdate': replace,
             'incrementdateforced': self.tcia_replace_date_time,
-            'hashuid': replace_UID,
+            'hashuid': self.replace_UID,
             'time': self.tcia_keep,
             'empty': empty,
             'replace': replace,
@@ -115,6 +115,8 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
             "(0x0018, 0x700C)": self.tcia_to_ps3_actions_map['empty'],      # Date of Last Detector Calibration
             "(0x0018, 0x1200)": self.tcia_to_ps3_actions_map['replace'] ,   # Date of Last Calibration
             "(0x0018, 0x1201)": self.tcia_to_ps3_actions_map['keep'] ,      # Time of Last Calibration
+            "(0x0020, 0x0011)": self.tcia_to_ps3_actions_map['replace'] ,   # Series Number
+            "(0x0018, 0x1000)": self.tcia_to_ps3_actions_map['keep'],       # Device Serial Number
         }
         
         actions_map_name_functions.update({
@@ -296,21 +298,57 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
             custom_actions[taghex] = self.custom_actions[tag]
 
         return custom_actions
+    
+    def action_empty_pn(self, element:pydicom.DataElement):
+        if element.VR == 'OW':
+            pass
+        elif element.VR == 'PN':
+            if element.tag not in self.history:
+                element.value = ''
+                self.history[element.tag] = empty.__name__
+        elif element.VR == 'SQ':
+            for sub_dataset in element.value:
+                for sub_element in sub_dataset.elements():
+                    if isinstance(sub_element, pydicom.dataelem.RawDataElement):
+                        # RawDataElement is a NamedTuple, so cannot set its value attribute.
+                        # Convert it to a DataElement, replace value, and set it back.
+                        e2 = pydicom.dataelem.DataElement_from_raw(sub_element)
+                        self.action_empty_pn(e2)
+                        sub_dataset.add(e2)
+                    else:
+                        self.action_empty_pn(sub_element)
+
 
     def empty_remaining_pn_vr(self, dataset: pydicom.Dataset):
         for element in dataset:
-            if element.VR == 'OW':
+            self.action_empty_pn(element)
+    
+    def check_and_replace_dates(self, dataset: pydicom.Dataset):
+        accept_vr_only = ("DS", "IS")
+
+        for tag_tuple in self.ignored_tags:
+            tag =  tag_tuple[0]
+            element = dataset.get(tag)
+
+            # skip incase tags already deleted          
+            if element is None:
+                continue
+            elif element.VR in accept_vr_only and element.VM == 1:
+                parsed = False
+                try:
+                    parsed_date, _ = parse_date_string(str(element.value))
+                    parsed = True
+                except Exception as e:
                     continue
-            if element.VR == 'PN':
-                if element.tag not in self.history:
-                    element.value = ''
-                    self.history[element.tag] = empty.__name__
-        
-        return
+                
+                # replace date if found
+                if parsed:
+                    element.value = "0"
+
     
     def apply_soft_detections(self, dataset: pydicom.Dataset):
         accept_vr_only = ("LO", "ST", "LT")
-        ignore_tags_name = ["Protocol Name", "Private Creator", "Private tag data", "Manufacturer"]
+        ignore_tags_name = ["Manufacturer"]
         filtered_tags = []
 
         for tag_tuple in self.ignored_tags:
@@ -322,7 +360,7 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
             if element.VR in accept_vr_only and element.name not in ignore_tags_name and element.VM == 1:
                 n_words = count_words(element.value)
                 if n_words > 1:
-                    filtered_tags.append(tag)
+                    filtered_tags.append(tag)                
         
         all_texts, text_tag_mapping = self.tags_to_note(filtered_tags, dataset)
         
@@ -331,12 +369,21 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
             for tag in tags_w_entities:
                 element = dataset.get(tag)
                 deid_val = self.notes_phi_detector.deid_element_from_entity_values(element, tags_w_entities[tag])
-                ### Hard CODE rule for `Study Description`
-                if tag == (0x0008, 0x1030):
-                    if deid_val.lower().endswith("for"):
-                        deid_val = deid_val[:-3].strip()
-                        
-                element.value = deid_val
+
+                # if changed do the processing
+                if deid_val != element.value:
+                    # replace leftover `for` after removing names at the end
+                    if deid_val.lower().endswith(" for"):
+                        deid_val = deid_val[:-3].strip()                    
+                    # replace if leftover Dr. substring after deidentification
+                    deid_val = re.sub(r'(?i)\bdr\b\.?', '', deid_val)
+                    # replace multiple whitespaces created by deidentification
+                    deid_val = re.sub(r'\s+', ' ', deid_val)
+
+                    deid_val = deid_val.strip()
+                            
+                    element.value = deid_val
+
                 self.history[element.tag] = replace.__name__
         return
     
@@ -442,7 +489,7 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
         delete_private_tags: bool = False,
     ) -> None:
         private_tags_actions = {}
-
+        
         if self.apply_custom_actions:
             custom_actions = self.get_custom_actions()
             private_tags_actions.update(custom_actions)
@@ -463,7 +510,10 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
         #     for tag in tags_to_replce:
         #         self.ignored_tags.append((tag, 'replace'))
         
-        extra_anonymization_rules.update(private_tags_actions)
+        if extra_anonymization_rules is not None:
+            extra_anonymization_rules.update(private_tags_actions)
+        else:
+            extra_anonymization_rules = private_tags_actions
 
         super().anonymize_dataset(dataset, extra_anonymization_rules, delete_private_tags=False)
 
@@ -475,6 +525,7 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
 
         if self.soft_detection:
             self.apply_soft_detections(dataset)
+            self.check_and_replace_dates(dataset)
 
         if self.private_tags_extractor:
             # private_tag_actions = self.get_private_tags_anonymize_actions(dataset)
@@ -484,7 +535,6 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
             #         action(dataset, tag)
             #         self.history[tag] = action.__name__
             self.walk_and_anonymize_private_dataset(dataset)
-
 
 
             

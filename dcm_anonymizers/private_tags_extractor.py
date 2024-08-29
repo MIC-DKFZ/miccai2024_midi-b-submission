@@ -117,7 +117,12 @@ class PrivateTagsExtractorV2:
         if private_block_name is None:
             return f"({group_str},{element_str})"
         else:
-            return f"({group_str},{private_block_name.lower()},{element_str[-2:]})"
+            # strip if block name contains `,`, since dict key also stripped by `,`
+            private_block_splits = private_block_name.split(',')
+            private_block_splits = [s.strip() for s in private_block_splits]
+            private_block_name = ','.join(private_block_splits).lower()
+
+            return f"({group_str},{private_block_name},{element_str[-2:]})"
 
     @staticmethod
     def get_element_block_tag_with_parents(element, private_block_name=None, parent_blocks: list = []):

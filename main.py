@@ -14,11 +14,11 @@ if __name__ == "__main__":
     
 # DEID_DATASET_ROOT = '/home/r079a/Desktop/de-identification/dataset/midi-validation-data'
 
-# 3216969
+# # 2957337
 # if __name__ == "__main__":
 #     anonymizer = Anonymizer(
 #         input_path=Path(DEID_DATASET_ROOT, 'input_data'),
-#         output_path=Path(DEID_DATASET_ROOT, 'output_data_sample')
+#         output_path=Path(DEID_DATASET_ROOT, 'output_data')
 #     )
 
 #     anonymizer.run()
