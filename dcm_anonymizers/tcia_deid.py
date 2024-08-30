@@ -41,7 +41,8 @@ def replace_element_value(dataset, tag, value):
 
 def count_words(s):
     # Use a regular expression to split the string on spaces or separator characters
-    words = re.split(r'[ \-_^\n]+', s)
+    # words = re.split(r'[ \-_^\n]+', s)
+    words = re.split(r'[ ^\n]+', s)
     
     # Filter out empty strings that might occur due to consecutive separators
     words = [word for word in words if word]
@@ -94,22 +95,26 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
         self.custom_actions = {
             "(0x0008, 0x2111)": self.tcia_to_ps3_actions_map['replace'],    # Derivation Description
             "(0x0010, 0x2180)": self.tcia_to_ps3_actions_map['keep'],       # Occupation
-            "(0x0012, 0x0010)": self.tcia_to_ps3_actions_map['remove'], 	# Clinical Trial Sponsor Name	
-            "(0x0012, 0x0020)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Protocol ID	
-            "(0x0012, 0x0021)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Protocol Name	
-            "(0x0012, 0x0030)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Site ID	
-            "(0x0012, 0x0031)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Site Name	
-            "(0x0012, 0x0040)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Subject ID	
-            "(0x0012, 0x0042)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Subject Reading ID	
-            "(0x0012, 0x0051)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Time Point Description	
-            "(0x0012, 0x0060)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Coordinating Center Name	
-            "(0x0012, 0x0071)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Series ID	
-            "(0x0012, 0x0072)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Series Description	
-            "(0x0012, 0x0081)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Protocol Ethics Committee Name	
-            "(0x0012, 0x0082)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Protocol Ethics Committee Approval Number	
-            "(0x0012, 0x0083)": self.tcia_to_ps3_actions_map['remove'],	    # Consent for Clinical Trial Use Sequence	
+
+            # customization of clinical trial protocol tags rules
+            # keeping the sponsor name and empty the ID
+            "(0x0012, 0x0010)": self.tcia_to_ps3_actions_map['keep'], 	    # Clinical Trial Sponsor Name	
+            "(0x0012, 0x0020)": self.tcia_to_ps3_actions_map['empty'],	    # Clinical Trial Protocol ID	
+            # "(0x0012, 0x0021)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Protocol Name	
+            "(0x0012, 0x0030)": self.tcia_to_ps3_actions_map['empty'],	    # Clinical Trial Site ID	
+            # "(0x0012, 0x0031)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Site Name	
+            "(0x0012, 0x0040)": self.tcia_to_ps3_actions_map['empty'],	    # Clinical Trial Subject ID	
+            "(0x0012, 0x0042)": self.tcia_to_ps3_actions_map['empty'],	    # Clinical Trial Subject Reading ID	
+            # "(0x0012, 0x0051)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Time Point Description	
+            # "(0x0012, 0x0060)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Coordinating Center Name	
+            "(0x0012, 0x0071)": self.tcia_to_ps3_actions_map['empty'],	    # Clinical Trial Series ID	
+            # "(0x0012, 0x0072)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Series Description	
+            # "(0x0012, 0x0081)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Protocol Ethics Committee Name	
+            # "(0x0012, 0x0082)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Protocol Ethics Committee Approval Number	
+            # "(0x0012, 0x0083)": self.tcia_to_ps3_actions_map['remove'],	    # Consent for Clinical Trial Use Sequence	
             "(0x0010, 0x4000)": self.tcia_to_ps3_actions_map['replace'],    # Patient Comments
-            "(0x0040, 0x0009)": self.tcia_to_ps3_actions_map['keep'],       # Scheduled Procedure Step ID
+            # "(0x0040, 0x0009)": self.tcia_to_ps3_actions_map['keep'],       # Scheduled Procedure Step ID
+
             "(0x0020, 0x4000)": self.tcia_to_ps3_actions_map['replace'],    # Image Comments            
             "(0x0018, 0x700A)": self.tcia_to_ps3_actions_map['empty'] ,     # Detector ID
             "(0x0018, 0x700C)": self.tcia_to_ps3_actions_map['empty'],      # Date of Last Detector Calibration
@@ -483,8 +488,8 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
 
     #     return private_tags_actions
 
-    def walk_and_anonymize_private_dataset(self, dataset, parent_elements=[], is_root=True):
-        private_creator_block_name = None
+    def walk_and_anonymize_private_dataset(self, dataset, parent_elements=[], is_root=True, private_creators = []):
+        private_creator_blocks = private_creators.copy()
         for elem in dataset:
             tag = elem.tag
             value = elem.value
@@ -496,23 +501,29 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
                     continue
 
             if name == "Private Creator":
-                private_creator_block_name = value
-            elif len(parent_elements) > 0:
-                immidiate_parent = parent_elements[-1]
-                private_creator_block_name = immidiate_parent[1]
-
+                private_creator_blocks.append(value)
+            # elif len(parent_elements) > 0:
+            #     immidiate_parent = parent_elements[-1]
+            #     private_creator_blocks(immidiate_parent[1])
             
             # Process the element
             if isinstance(value, Sequence):
                 # If the value is a Sequence, recursively traverse each Dataset in the Sequence
                 updated_parent_elements = parent_elements.copy()
-                updated_parent_elements.append((elem, private_creator_block_name))
+                updated_parent_elements.append((elem, private_creator_blocks[-1]))
                 for i, item in enumerate(value):
-                    self.walk_and_anonymize_private_dataset(item, parent_elements=updated_parent_elements, is_root=False)
+                    self.walk_and_anonymize_private_dataset(
+                        item, 
+                        parent_elements=updated_parent_elements, 
+                        is_root=False, 
+                        private_creators=private_creator_blocks
+                    )
             else:
                 # process the data element
-                block_tag = self.private_tags_extractor.get_element_block_tag_with_parents(elem, private_creator_block_name, parent_elements)
-                private_disposition = self.private_tags_extractor.get_dispoistion_val_from_block_tag(block_tag, elem)
+                block_tags = self.private_tags_extractor.get_element_block_tags_with_parents(
+                    elem, private_creator_blocks, parent_elements
+                )
+                private_disposition = self.private_tags_extractor.get_dispoistion_val_from_block_tags(block_tags, elem)
                 action = self.tcia_to_ps3_actions_map[self.disposition_val_to_tcia_actions[private_disposition]]
                 if action is not None:
                     action(dataset, tag)

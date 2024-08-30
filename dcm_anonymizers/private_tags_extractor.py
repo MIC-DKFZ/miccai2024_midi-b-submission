@@ -102,12 +102,23 @@ class PrivateTagsExtractorV2:
     def __init__(self, private_tags_dict_path: str = PRIVATE_TAGS_DICT):
         self.private_tag_dict_path = private_tags_dict_path
         self.private_tag_dict = None
+        self.override_dict = {
+            "(0009,gems_petd_01,0f)_ST": {
+                "pattern": "(0009,GEMS_PETD_01\",0f)",
+                "tag_name": "Scan Description",
+                "vr": "ST",
+                "private_disposition": "k"
+            },
+        }
 
         self._load_private_tag_dict()
 
     def _load_private_tag_dict(self):
         with open(self.private_tag_dict_path) as f:
             self.private_tag_dict = json.load(f)
+        
+        if len(self.override_dict) > 0:
+            self.private_tag_dict.update(self.override_dict)
     
     @staticmethod
     def get_element_block_tag(element, private_block_name=None):
@@ -125,28 +136,39 @@ class PrivateTagsExtractorV2:
             return f"({group_str},{private_block_name},{element_str[-2:]})"
 
     @staticmethod
-    def get_element_block_tag_with_parents(element, private_block_name=None, parent_blocks: list = []):
+    def get_element_block_tags_with_parents(element, private_blocks: list, parent_blocks: list = []):
         parent_block_str = ""
         for idx, parent_tuple in enumerate(parent_blocks):
             parent_block_tag = PrivateTagsExtractorV2.get_element_block_tag(parent_tuple[0], parent_tuple[1])
             parent_block_str += f"{parent_block_tag}[<{idx}>]"
 
-        element_block_tag = PrivateTagsExtractorV2.get_element_block_tag(element, private_block_name)
+        block_tags = []
 
-        vr_val = element.VR
+        for private_block_name in reversed(private_blocks):
+            element_block_tag = PrivateTagsExtractorV2.get_element_block_tag(element, private_block_name)
 
-        # if vr value like VR.UN, split and take last one
-        vr_splits = vr_val.split('.')
-        if len(vr_splits) > 0:
-            vr_val = vr_splits[-1]
+            vr_val = element.VR
 
-        return f"{parent_block_str}{element_block_tag}_{vr_val}"
+            # if vr value like VR.UN, split and take last one
+            vr_splits = vr_val.split('.')
+            if len(vr_splits) > 0:
+                vr_val = vr_splits[-1]
 
-    def get_dispoistion_val_from_block_tag(self, block_tag: str, element: pydicom.DataElement):
+            block_tag = f"{parent_block_str}{element_block_tag}_{vr_val}"
+            block_tags.append(block_tag)
+
+        return block_tags
+
+    def get_dispoistion_val_from_block_tags(self, block_tags: list[str], element: pydicom.DataElement):
         if element.name.lower() == "private creator":
             return 'k'
         
-        private_rules = self.private_tag_dict.get(block_tag)
+        private_rules = None
+        for block_tag in block_tags:
+            private_rules = self.private_tag_dict.get(block_tag)
+            if private_rules is not None:
+                break
+
         if private_rules is None:
             print(f"Warning!!! '{block_tag}': {element.name} not found in private tags dictionary")
             return 'k'

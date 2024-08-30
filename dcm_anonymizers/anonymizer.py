@@ -227,6 +227,24 @@ class Anonymizer:
             writer.writeheader()
             writer.writerows(data)
 
+    # def run_custom_checks_on_dcm(self, dcmpath):
+    #     dataset = pydicom.dcmread(dcmpath)
+        
+    #     element_found = 0
+    #     non_empty = 0
+
+    #     for element in dataset.elements():
+    #         if element.tag == (0x0009, 0x100f):
+    #             element_val = element.value
+    #             if isinstance(element_val, bytes):
+    #                 element_val = element_val.decode('utf-8')
+    #             element_found += 1
+    #             if element_val != '':
+    #                 non_empty += 1
+    #                 print(element_val)
+
+
+    #     return element_found, non_empty
 
     def run(self):        
         print(f"Total dicoms to be anonymized: {self.total_dcms}")
@@ -234,6 +252,8 @@ class Anonymizer:
         
         start_from = 0
         count = 0
+        # total_found = 0
+        # total_non_empty = 0
         for idx, dir in enumerate(self.dcm_dirs):            
             patient_attrs_action = self.create_patient_attrs_action(dir)
             
@@ -243,15 +263,22 @@ class Anonymizer:
                     progress_bar.update(1)
                     count += 1
                     continue
-                if not self.anonymized_file_exists(dcm, dir):
-                    # print(dcm)
-                    _, outfile = self.anonymize_metadata_on_file(dcm, dir, patient_attrs_action)
-                    #self.logger.debug(f"{history}")                    
-                    self.anonymize_image_data_on_file(outfile, replace=True)
-                    progress_bar.update(1)
-                    count += 1
+
+                # if not self.anonymized_file_exists(dcm, dir):
+                _, outfile = self.anonymize_metadata_on_file(dcm, dir, patient_attrs_action)
+                # self.logger.debug(f"{history}")                    
+                self.anonymize_image_data_on_file(outfile, replace=True)
+
+                # n_element, n_non_empty = self.run_custom_checks_on_dcm(dcm)
+                # total_found += n_element
+                # total_non_empty += n_non_empty
+
+                progress_bar.update(1)
+                count += 1
             
         progress_bar.close()
+
+        # print(f"Total {total_found} series found with tag PET scan_description {total_non_empty} with non empty value.")
         
         series_output_map = self.get_series_output_path_map()
        

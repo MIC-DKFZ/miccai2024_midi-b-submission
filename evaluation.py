@@ -63,10 +63,10 @@ def extract_tags(dcm, gt_ds, annon_ds, tagvalues):
             continue
         # targettags.append(element.tag)
         
-        deidval = "Not available"
+        deidval = ""
         if deidelem:
             deidval = str(deidelem.value)
-        dcmannonval = "Not available"
+        dcmannonval = ""
         if dcmannonelem:
             dcmannonval = str(dcmannonelem.value)
         changed = False
@@ -181,7 +181,7 @@ if __name__ == "__main__":
     detector = DcmRobustPHIDetector()
     img_anonymizer = DCMImageAnonymizer(phi_detector=detector)
 
-    anonymizer_output_path = Path(root_data_dir, 'anonymizer-output/Pseudo-PHI-DICOM-Data-9-private-tags-full')
+    anonymizer_output_path = Path(root_data_dir, 'anonymizer-output/Pseudo-PHI-DICOM-Data-10-removed-ctp-custom')
 
     path_mapping_file = Path(anonymizer_output_path, 'mappings/path_mapping.csv')
 
