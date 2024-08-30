@@ -117,6 +117,7 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
             "(0x0018, 0x1201)": self.tcia_to_ps3_actions_map['keep'] ,      # Time of Last Calibration
             "(0x0020, 0x0011)": self.tcia_to_ps3_actions_map['replace'] ,   # Series Number
             "(0x0018, 0x1000)": self.tcia_to_ps3_actions_map['keep'],       # Device Serial Number
+            "(0x0088, 0x0200)": self.tcia_to_ps3_actions_map['keep'],       # Icon Image Sequence
         }
         
         actions_map_name_functions.update({
@@ -129,7 +130,9 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
             if self.detector:
                 element.value = self.detector.deidentified_element_val(element)
             else:
-                self.ignored_tags.append((element.tag, 'keep'))
+                self.ignored_tags[element.tag] = 'keep'
+        elif element.VR in ('DA', 'DT'):
+            element.value = self.shift_date(element.value, days=self.shift_date_offset)
         else:
             pass
 
@@ -273,22 +276,22 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
     
 
     def deidentify_all_ignored_tags_as_note(self, dataset: pydicom.Dataset):
-        tags_action_dict = dict((tag, action) for tag, action in self.ignored_tags)
-        tags_list = list(tags_action_dict.keys())
+        # tags_action_dict = dict((tag, action) for tag, action in self.ignored_tags)
+        tags_list = list(self.ignored_tags.keys())
         note, tags_note_map = self.tags_to_note(tags_list, dataset)
         tags_w_entities = self.notes_phi_detector.detect_enitity_tags_from_text(note, tags_note_map)
         for tag in tags_w_entities:
             element = dataset.get(tag)
             deid_val = self.notes_phi_detector.deid_element_from_entity_values(element, tags_w_entities[tag])
             if element.value != deid_val:
-                if tags_action_dict[element.tag] == 'empty':
+                if self.ignored_tags[element.tag] == 'empty':
                     element.value = ""
                 else:
                     element.value = deid_val
 
-                self.history[element.tag] = tags_action_dict[element.tag]
+                self.history[element.tag] = self.ignored_tags[element.tag]
         
-        self.ignored_tags = []
+        self.ignored_tags = {}
 
     def get_custom_actions(self):
         custom_actions = {}
@@ -326,8 +329,7 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
     def check_and_replace_dates(self, dataset: pydicom.Dataset):
         accept_vr_only = ("DS", "IS")
 
-        for tag_tuple in self.ignored_tags:
-            tag =  tag_tuple[0]
+        for tag in self.ignored_tags.keys():
             element = dataset.get(tag)
 
             # skip incase tags already deleted          
@@ -344,6 +346,36 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
                 # replace date if found
                 if parsed:
                     element.value = "0"
+    
+    def check_n_increment_dates_in_vr_sh(self, dataset: pydicom.Dataset, sequences: dict):
+        for tag in self.ignored_tags.keys():            
+            elements = []
+
+            # extract tags from the dataset and
+            # also from the sequence
+            elem = dataset.get(tag)
+            if elem is not None:
+                elements.append(elem)
+
+            for s in sequences.keys():
+                sequence = sequences[s]
+                for i, item in enumerate(sequence):
+                    elem = item.get(tag)
+                    if elem is not None:
+                        elements.append(elem)
+
+            for element in elements:
+                if element.VR == 'SH' and element.VM == 1:
+                    parsed = False
+                    try:
+                        parsed_date, _ = parse_date_string(str(element.value))
+                        parsed = True
+                    except Exception as e:
+                        continue
+                    
+                    # replace date if found
+                    if parsed:
+                        element.value = self.shift_date(element.value, self.shift_date_offset)
 
     
     def apply_soft_detections(self, dataset: pydicom.Dataset):
@@ -351,8 +383,7 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
         ignore_tags_name = ["Manufacturer"]
         filtered_tags = []
 
-        for tag_tuple in self.ignored_tags:
-            tag =  tag_tuple[0]
+        for tag in self.ignored_tags.keys():
             element = dataset.get(tag)
             # skip incase tags already deleted          
             if element is None:
@@ -508,7 +539,7 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
         #         private_tags_actions[(element.tag.group, element.tag.element)] = replace_with_value([deid_val])
         # else:
         #     for tag in tags_to_replce:
-        #         self.ignored_tags.append((tag, 'replace'))
+        #         self.ignored_tags[tag] = 'replace'
         
         if extra_anonymization_rules is not None:
             extra_anonymization_rules.update(private_tags_actions)
@@ -524,8 +555,10 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
             self.empty_remaining_pn_vr(dataset)
 
         if self.soft_detection:
+            sequences = DCMPS33Anonymizer.separate_sequences(dataset)
             self.apply_soft_detections(dataset)
             self.check_and_replace_dates(dataset)
+            self.check_n_increment_dates_in_vr_sh(dataset, sequences)
 
         if self.private_tags_extractor:
             # private_tag_actions = self.get_private_tags_anonymize_actions(dataset)

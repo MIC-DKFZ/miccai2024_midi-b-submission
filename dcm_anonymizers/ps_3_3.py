@@ -1,4 +1,5 @@
 import json
+import re
 from typing import Union
 from ast import literal_eval
 from decimal import Decimal
@@ -7,6 +8,8 @@ from datetime import timedelta
 import pydicom
 from pydicom.multival import MultiValue
 from pydicom.uid import generate_uid
+from pydicom.sequence import Sequence
+from collections import defaultdict
 
 from dicomanonymizer import simpledicomanonymizer
 from dicomanonymizer.simpledicomanonymizer import (
@@ -74,17 +77,20 @@ def replace_with_value(options: Union[list, dict]):
 class DCMPS33Anonymizer:
     def __init__(self, phi_detector: DcmRobustPHIDetector = None):
         super().__init__()
-        self.uid_dict = {}
-        self.series_uid_dict = {}
-        self.id_dict = {}
-        self.history = {}
         self.shift_date_offset = SHIFT_DATE_OFFSET
         self.uid_prefix = '1.2.826.0.1.3680043.8.498.'
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
         
         self.detector = phi_detector
-        self.ignored_tags = []
+
+        self.uid_dict = {}
+        self.series_uid_dict = {}
+        self.id_dict = {}
+        self.history = {}
+        self.ignored_tags = {}
+
+        self.current_actions = {}
 
         self._override_simpledicomanonymizer()
 
@@ -125,7 +131,7 @@ class DCMPS33Anonymizer:
     #     else:
     #         return new_date.strftime("%Y%m%d%H%M%S")
 
-    def shift_date(self, date_string, days=0, hours=0, minutes=0, seconds=0, date_only=True):
+    def shift_date(self, date_string, days=0, hours=0, minutes=0, seconds=0, date_only=False):
         if date_string == '':
             return date_string
 
@@ -163,8 +169,6 @@ class DCMPS33Anonymizer:
         # eg. Referenced SOP Class UID UI (0008, 1150)
         ignore_uid_tags = [(0x0008, 0x1150)]
 
-        # earliervalue = str(element.value)
-
         if element.tag in ignore_uid_tags:
             pass
         elif isinstance(element.value, MultiValue):
@@ -174,12 +178,6 @@ class DCMPS33Anonymizer:
         else:
             element.value = self.get_UID(element.value)
 
-        # changedval = str(element.value)
-        # print("==================================")
-        # print(element)
-        # print(earliervalue)
-        # print(changedval)
-        # print("==================================")
 
 
     def get_ID(self, old_id: str) -> str:
@@ -247,14 +245,14 @@ class DCMPS33Anonymizer:
             if self.detector:
                 element.value = self.detector.deidentified_element_val(element)
             else:
-                self.ignored_tags.append((element.tag, 'replace'))
+                self.ignored_tags[element.tag] = 'replace'
         elif element.VR == "UI":
             self.replace_element_UID(element)
         elif element.VR in ("DS", "IS"):        
             # element.value = "0"
             # ignore it now to have a date check for later
             # if date. replace it else keep
-            self.ignored_tags.append((element.tag, 'replace'))
+            self.ignored_tags[element.tag] =  'replace'
         elif element.VR in ("FD", "FL", "SS", "US", "SL", "UL"):
             element.value = 0
         elif element.VR in ("DT", "DA", "TM"):
@@ -267,6 +265,11 @@ class DCMPS33Anonymizer:
         elif element.VR == "SQ":
             for sub_dataset in element.value:
                 for sub_element in sub_dataset.elements():
+                    # if already actions are defined in action dict
+                    # action will be applied with sequence actions
+                    tag_tuple = (sub_element.tag.group, sub_element.tag.element)
+                    if tag_tuple in self.current_actions:
+                        continue
                     if isinstance(sub_element, pydicom.dataelem.RawDataElement):
                         # RawDataElement is a NamedTuple, so cannot set its value attribute.
                         # Convert it to a DataElement, replace value, and set it back.
@@ -305,7 +308,7 @@ class DCMPS33Anonymizer:
                 if len(entities) > 0:
                     element.value = ""
             else:
-                # self.ignored_tags.append((element.tag, 'empty'))
+                # self.ignored_tags[element.tag] = 'empty'
                 element.value = ""
         elif element.VR in ("DT", "DA", "TM"):
             # self.custom_replace_date_time_element(element)
@@ -322,7 +325,13 @@ class DCMPS33Anonymizer:
         elif element.VR == "SQ":
             for sub_dataset in element.value:
                 for sub_element in sub_dataset.elements():
-                    self.custom_empty_element(sub_element)
+                    # if already actions are defined in action dict
+                    # action will be applied with sequence actions
+                    tag_tuple = (sub_element.tag.group, sub_element.tag.element)
+                    if tag_tuple in self.current_actions:
+                        continue
+                    else:
+                        self.custom_empty_element(sub_element)
         else:
             self.logger.warning(
                 "Element {}={} not anonymized. VR {} not yet implemented.".format(element.name, element.value, element.VR)
@@ -366,6 +375,38 @@ class DCMPS33Anonymizer:
                 sequence_datasets.append(elem_dataset)
                 # sequence_datasets = self.extract_sequence_element_datasets(elem_dataset, sequence_datasets)
         return sequence_datasets
+    
+    @staticmethod
+    def next_element_level(tagstr:str):
+        splits = re.split(r'\[\d+\]', tagstr)
+        return (len(splits) - 1)
+
+    @staticmethod
+    def separate_sequences(ds, prefix=''):
+        """
+        Recursively separates sequences from a pydicom Dataset.
+        
+        Args:
+            ds (pydicom.Dataset): The pydicom dataset to process.
+            prefix (str): Prefix for the current level of sequence keys.
+        
+        Returns:
+            dict: A dictionary where keys are the sequence names with their levels, 
+                and values are lists of datasets at that sequence level.
+        """
+        sequences = defaultdict(list)
+        
+        # Iterate over the dataset's elements
+        for elem in ds:
+            if isinstance(elem.value, Sequence):  # Check if the element is a Sequence
+                seq_name = f"{prefix}{elem.tag}"
+                sequences[seq_name].extend(elem.value)  # Store the sequence
+                for i, item in enumerate(elem.value):
+                    # Recursively process nested sequences
+                    nested_sequences = DCMPS33Anonymizer.separate_sequences(item, prefix=f"{seq_name}[{i}]")
+                    sequences.update(nested_sequences)
+        
+        return sequences
 
 
     def anonymize_dataset(
@@ -386,43 +427,28 @@ class DCMPS33Anonymizer:
         if extra_anonymization_rules is not None:
             current_anonymization_actions.update(extra_anonymization_rules)
         
-        if delete_private_tags:
-            private_tags_actions = {}
+        self.current_actions = current_anonymization_actions
+        
+        # if delete_private_tags:
+        #     private_tags_actions = {}
             
-            # Iterate through the data elements and check for private tags
-            for element in dataset:
-                # A tag is a tuple of (group, element)
-                group, _ = element.tag.group, element.tag.element
-                if group % 2 != 0 and (element.name.startswith('[') and element.name.endswith("]")):
-                    private_tags_actions[(element.tag.group, element.tag.element)] = delete_or_replace
-                    # print(f"Private Tag Found: {element.tag} - {element.name}, Private: {element.tag.is_private}")
+        #     # Iterate through the data elements and check for private tags
+        #     for element in dataset:
+        #         # A tag is a tuple of (group, element)
+        #         group, _ = element.tag.group, element.tag.element
+        #         if group % 2 != 0 and (element.name.startswith('[') and element.name.endswith("]")):
+        #             private_tags_actions[(element.tag.group, element.tag.element)] = delete_or_replace
+        #             # print(f"Private Tag Found: {element.tag} - {element.name}, Private: {element.tag.is_private}")
 
-            if private_tags_actions:
-                current_anonymization_actions.update(private_tags_actions)
+        #     if private_tags_actions:
+        #         current_anonymization_actions.update(private_tags_actions)
 
         action_history = {}
-        private_tags = []
-        sequences = []
+        private_tags = []      
 
-        def walk_sequences(dataset):
-            for elem in dataset:
-                if elem.VR == 'SQ':            
-                    for i, item in enumerate(elem.value):
-                        sequences.append(item)
-                        walk_sequences(item) 
-
-        walk_sequences(dataset)
-
+        sequences = DCMPS33Anonymizer.separate_sequences(dataset)
+        
         for tag, action in current_anonymization_actions.items():
-            # check current tag already exists in the 
-            # processed tags history
-            basetag = int_tuple_to_basetag(tag)
-            if basetag in self.history:
-                continue
-            
-            ## TODO add the action taken on 
-            # range tag element to the history and 
-            # remove the tag from ignored tags 
             def range_callback(dataset, data_element):
                 if (
                     data_element.tag.group & tag[2] == tag[0]
@@ -430,50 +456,66 @@ class DCMPS33Anonymizer:
                 ):   
                     action(dataset, (data_element.tag.group, data_element.tag.element))
 
-            element = None
             # We are in a repeating group
             if len(tag) > 2:
-                dataset.walk(range_callback)
+                dataset.walk(range_callback)            
             # Individual Tags
             else:
-                try:
-                    element = dataset.get(tag)
+                element = None
+                # check current tag already exists in the 
+                # processed tags history
+                basetag = int_tuple_to_basetag(tag)
+                if basetag not in self.history:
+                    ## TODO add the action taken on 
+                    # range tag element to the history and 
+                    # remove the tag from ignored tags 
+                    try:
+                        element = dataset.get(tag)
+                        if element:
+                            earliervalue = element.value
+                    except KeyError:
+                        logging.warning("Cannot get element from tag: ", tag_to_hex_strings(tag))
+
+                    if tag[0] == 0x0002:
+                        if not hasattr(dataset, "file_meta"):
+                            continue
+                        # Apply rule to meta information header
+                        action(dataset.file_meta, tag)
+                    else:
+                        action(dataset, tag)                                               
+                    
                     if element:
-                        earliervalue = element.value
-                except KeyError:
-                    logging.warning("Cannot get element from tag: ", tag_to_hex_strings(tag))
+                        # check if Series Instance UID, then store the id in series id map
+                        if tag == (0x0020, 0x000E):
+                            if earliervalue in self.series_uid_dict:
+                                earlieruid = self.series_uid_dict.get(earliervalue)
+                                assert earlieruid == element.value
+                            else:
+                                self.series_uid_dict[earliervalue] = element.value
 
-                if tag[0] == 0x0002:
-                    if not hasattr(dataset, "file_meta"):
+                        if earliervalue != element.value:
+                            action_history[basetag] = action.__name__
+
+                    # Get private tag to restore it later
+                    # check if the element is already not deleted
+                    if element and (action != delete and action.__name__ != 'tcia_delete') and element.tag.is_private:                                   
+                        private_tags.append(simpledicomanonymizer.get_private_tag(dataset, tag))
+
+                # process sequences
+                for s in sequences.keys():
+                    sequence = sequences[s]
+                    next_level = DCMPS33Anonymizer.next_element_level(s)
+                    seqeunce_tag = f"{s}[{next_level}]{basetag}"
+                    if seqeunce_tag in action_history:
                         continue
-                    # Apply rule to meta information header
-                    action(dataset.file_meta, tag)
-                else:
-                    action(dataset, tag)
 
-                # also check if the tag exists inside
-                # the sequences.
-                for s in sequences:
-                    if tag in s:
-                        action(s, tag)                                                 
-                
-                if element:
-                    # check if Series Instance UID, then store the id in series id map
-                    if tag == (0x0020, 0x000E):
-                        if earliervalue in self.series_uid_dict:
-                            earlieruid = self.series_uid_dict.get(earliervalue)
-                            assert earlieruid == element.value
-                        else:
-                            self.series_uid_dict[earliervalue] = element.value
-
-                    if earliervalue != element.value:
-                        action_history[element.tag] = action.__name__
-
-                # Get private tag to restore it later
-                # check if the element is already not deleted
-                if element and (action != delete and action.__name__ != 'tcia_delete') and element.tag.is_private:                                   
-                    private_tags.append(simpledicomanonymizer.get_private_tag(dataset, tag))
-
+                    for i, item in enumerate(sequence):
+                        elem = item.get(tag)
+                        if elem:
+                            earliervalue = elem.value
+                            action(item, tag)                            
+                            if earliervalue != elem.value:
+                                action_history[seqeunce_tag] =  action.__name__
 
 
         self.history = action_history
@@ -494,10 +536,12 @@ class DCMPS33Anonymizer:
                         element["offset"], element["element"].VR, element["element"].value
                     )
         
+        self.current_actions = {}
+        
     
     def anonymize(self, input_path: str, output_path: str, opt_history: dict = {}, custom_actions: dict = {}):
         self.history = opt_history
-        self.ignored_tags = []
+        self.ignored_tags = {}
 
         simpledicomanonymizer.anonymize_dicom_file(
             in_file=str(input_path),
