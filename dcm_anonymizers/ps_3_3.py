@@ -270,6 +270,7 @@ class DCMPS33Anonymizer:
                     tag_tuple = (sub_element.tag.group, sub_element.tag.element)
                     if tag_tuple in self.current_actions:
                         continue
+
                     if isinstance(sub_element, pydicom.dataelem.RawDataElement):
                         # RawDataElement is a NamedTuple, so cannot set its value attribute.
                         # Convert it to a DataElement, replace value, and set it back.

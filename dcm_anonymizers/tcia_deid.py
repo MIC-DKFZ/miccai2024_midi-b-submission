@@ -118,6 +118,7 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
             "(0x0020, 0x0011)": self.tcia_to_ps3_actions_map['replace'] ,   # Series Number
             "(0x0018, 0x1000)": self.tcia_to_ps3_actions_map['keep'],       # Device Serial Number
             "(0x0088, 0x0200)": self.tcia_to_ps3_actions_map['keep'],       # Icon Image Sequence
+            "(0x0008, 0x0118)": self.tcia_to_ps3_actions_map['replace'],    # Mapping Resource UID
         }
         
         actions_map_name_functions.update({
@@ -366,6 +367,12 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
 
             for element in elements:
                 if element.VR == 'SH' and element.VM == 1:
+                    # ignore if not date time in the name
+                    date_name_pattern = re.compile(r"(?i)\bdate(time)?\b")
+                    match = re.search(date_name_pattern, element.name)
+                    if match is None:
+                        continue
+
                     parsed = False
                     try:
                         parsed_date, _ = parse_date_string(str(element.value))
@@ -493,7 +500,7 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
             elif len(parent_elements) > 0:
                 immidiate_parent = parent_elements[-1]
                 private_creator_block_name = immidiate_parent[1]
-            
+
             
             # Process the element
             if isinstance(value, Sequence):
@@ -510,7 +517,6 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
                 if action is not None:
                     action(dataset, tag)
                     self.history[tag] = action.__name__
-
 
 
     def anonymize_dataset(
