@@ -314,11 +314,30 @@ class DcmRobustPHIDetector:
         # filter entitites, if those are detected from entity name
         entities = [entity for entity in entities if entity[2] > len(element_name)]
         return entities
+    
+    def filter_entities_by_whitelist(self, entities):
+        entity_whitelist = [r'(?i)\bbreast?\b', r'(?i)\bcontrast\b', r'(?i)\bbilateral\b']
+
+        filtered = []
+        for entity in entities:
+            matched = False
+            for pattrn in entity_whitelist:
+                match = re.search(pattrn, entity[0])
+                if match is not None:
+                    matched = True
+                    break
+            if not matched:
+                filtered.append(entity)
+
+
+        return filtered
 
     def detect_enitity_tags_from_text(self, all_texts: str, text_tag_mapping: dict):
         entities = self.detect_entities(all_texts)
-        element_target = {}
 
+        entities = self.filter_entities_by_whitelist(entities)
+        element_target = {}
+ 
         for e in entities:
             e_start = e[2]
             for t in text_tag_mapping:

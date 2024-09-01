@@ -227,24 +227,28 @@ class Anonymizer:
             writer.writeheader()
             writer.writerows(data)
 
-    # def run_custom_checks_on_dcm(self, dcmpath):
-    #     dataset = pydicom.dcmread(dcmpath)
+    def run_custom_checks_on_dcm(self, dcmpath):
+        dataset = pydicom.dcmread(dcmpath)
         
-    #     element_found = 0
-    #     non_empty = 0
+        element_found = 0
+        non_empty = 0
 
-    #     for element in dataset.elements():
-    #         if element.tag == (0x0009, 0x100f):
-    #             element_val = element.value
-    #             if isinstance(element_val, bytes):
-    #                 element_val = element_val.decode('utf-8')
-    #             element_found += 1
-    #             if element_val != '':
-    #                 non_empty += 1
-    #                 print(element_val)
+        for element in dataset.elements():
+            if element.tag == (0x0020, 0x9158):
+                if isinstance(element, pydicom.dataelem.RawDataElement):
+                    element = pydicom.dataelem.DataElement_from_raw(element)
+                assert element.name == "Frame Comments"
+                element_val = element.value
+                if isinstance(element_val, bytes):
+                    element_val = element_val.decode('utf-8')
+                element_found += 1
+                if element_val != '':
+                    non_empty += 1
+                    # element_val = element_val.encode('ISO-8859–1')
+                    print(element_val)
 
 
-    #     return element_found, non_empty
+        return element_found, non_empty
 
     def run(self):        
         print(f"Total dicoms to be anonymized: {self.total_dcms}")
@@ -278,7 +282,7 @@ class Anonymizer:
             
         progress_bar.close()
 
-        # print(f"Total {total_found} series found with tag PET scan_description {total_non_empty} with non empty value.")
+        # print(f"Total {total_found} series found with tag Comments on Frame Comments {total_non_empty} with non empty value.")
         
         series_output_map = self.get_series_output_path_map()
        

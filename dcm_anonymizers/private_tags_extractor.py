@@ -109,6 +109,12 @@ class PrivateTagsExtractorV2:
                 "vr": "ST",
                 "private_disposition": "k"
             },
+            "(0009,gems_petd_01,37)_LO": {
+                "pattern": "(0009,GEMS_PETD_01\",37)",
+                "tag_name": "Batch Description",
+                "vr": "LO",
+                "private_disposition": "d"
+            },
         }
 
         self._load_private_tag_dict()

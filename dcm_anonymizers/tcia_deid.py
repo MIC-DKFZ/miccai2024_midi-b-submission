@@ -2,6 +2,8 @@ import re
 import json
 from ast import literal_eval
 
+from datetime import datetime, timedelta
+
 import pydicom
 from pydicom import Sequence
 
@@ -93,37 +95,78 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
         }
 
         self.custom_actions = {
-            "(0x0008, 0x2111)": self.tcia_to_ps3_actions_map['replace'],    # Derivation Description
-            "(0x0010, 0x2180)": self.tcia_to_ps3_actions_map['keep'],       # Occupation
-
             # customization of clinical trial protocol tags rules
             # keeping the sponsor name and empty the ID
-            "(0x0012, 0x0010)": self.tcia_to_ps3_actions_map['keep'], 	    # Clinical Trial Sponsor Name	
+            "(0x0012, 0x0010)": self.tcia_to_ps3_actions_map['replace'],    # Clinical Trial Sponsor Name	
             "(0x0012, 0x0020)": self.tcia_to_ps3_actions_map['empty'],	    # Clinical Trial Protocol ID	
-            # "(0x0012, 0x0021)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Protocol Name	
+            "(0x0012, 0x0021)": self.tcia_to_ps3_actions_map['empty'],	    # Clinical Trial Protocol Name	
             "(0x0012, 0x0030)": self.tcia_to_ps3_actions_map['empty'],	    # Clinical Trial Site ID	
-            # "(0x0012, 0x0031)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Site Name	
+            "(0x0012, 0x0031)": self.tcia_to_ps3_actions_map['empty'],	    # Clinical Trial Site Name	
             "(0x0012, 0x0040)": self.tcia_to_ps3_actions_map['empty'],	    # Clinical Trial Subject ID	
             "(0x0012, 0x0042)": self.tcia_to_ps3_actions_map['empty'],	    # Clinical Trial Subject Reading ID	
-            # "(0x0012, 0x0051)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Time Point Description	
-            # "(0x0012, 0x0060)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Coordinating Center Name	
+            "(0x0012, 0x0051)": self.tcia_to_ps3_actions_map['empty'],	    # Clinical Trial Time Point Description	
+            "(0x0012, 0x0060)": self.tcia_to_ps3_actions_map['empty'],	    # Clinical Trial Coordinating Center Name	
             "(0x0012, 0x0071)": self.tcia_to_ps3_actions_map['empty'],	    # Clinical Trial Series ID	
-            # "(0x0012, 0x0072)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Series Description	
-            # "(0x0012, 0x0081)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Protocol Ethics Committee Name	
-            # "(0x0012, 0x0082)": self.tcia_to_ps3_actions_map['remove'],	    # Clinical Trial Protocol Ethics Committee Approval Number	
-            # "(0x0012, 0x0083)": self.tcia_to_ps3_actions_map['remove'],	    # Consent for Clinical Trial Use Sequence	
-            "(0x0010, 0x4000)": self.tcia_to_ps3_actions_map['replace'],    # Patient Comments
+            "(0x0012, 0x0072)": self.tcia_to_ps3_actions_map['empty'],	    # Clinical Trial Series Description	
+            # committee name ? better to check if needs to be emptied
+            "(0x0012, 0x0081)": self.tcia_to_ps3_actions_map['empty'],	    # Clinical Trial Protocol Ethics Committee Name
+            "(0x0012, 0x0082)": self.tcia_to_ps3_actions_map['empty'],	    # Clinical Trial Protocol Ethics Committee Approval Number	
+            "(0x0012, 0x0083)": self.tcia_to_ps3_actions_map['remove'],	    # Consent for Clinical Trial Use Sequence	
             # "(0x0040, 0x0009)": self.tcia_to_ps3_actions_map['keep'],       # Scheduled Procedure Step ID
-
-            "(0x0020, 0x4000)": self.tcia_to_ps3_actions_map['replace'],    # Image Comments            
-            "(0x0018, 0x700A)": self.tcia_to_ps3_actions_map['empty'] ,     # Detector ID
+      
             "(0x0018, 0x700C)": self.tcia_to_ps3_actions_map['empty'],      # Date of Last Detector Calibration
             "(0x0018, 0x1200)": self.tcia_to_ps3_actions_map['replace'] ,   # Date of Last Calibration
             "(0x0018, 0x1201)": self.tcia_to_ps3_actions_map['keep'] ,      # Time of Last Calibration
             "(0x0020, 0x0011)": self.tcia_to_ps3_actions_map['replace'] ,   # Series Number
-            "(0x0018, 0x1000)": self.tcia_to_ps3_actions_map['keep'],       # Device Serial Number
             "(0x0088, 0x0200)": self.tcia_to_ps3_actions_map['keep'],       # Icon Image Sequence
             "(0x0008, 0x0118)": self.tcia_to_ps3_actions_map['replace'],    # Mapping Resource UID
+
+            "(0x0062, 0x000B)": self.tcia_to_ps3_actions_map['keep'],       # Referenced Segment Number
+            "(0x0040, 0xA027)": self.tcia_to_ps3_actions_map['empty'],      # Verifying Organization 
+            "(0x0070, 0x0022)": self.tcia_to_ps3_actions_map['keep'],       # Graphic Data
+            "(0x0008, 0x010C)": self.tcia_to_ps3_actions_map['replace'],    # Coding Scheme UID
+            "(0x0040, 0x0310)": self.tcia_to_ps3_actions_map['replace'],    # Comments on Radiation Dose
+
+            "(0x0008,0x1010)": self.tcia_to_ps3_actions_map['keep'],        # Station Name, 
+            "(0x0018,0x1000)": self.tcia_to_ps3_actions_map['keep'],        # Device Serial Number, 
+            "(0x0018,0x1004)": self.tcia_to_ps3_actions_map['keep'],        # Plate ID, 
+            "(0x0018,0x1005)": self.tcia_to_ps3_actions_map['keep'],        # Generator ID, 
+            "(0x0018,0x1007)": self.tcia_to_ps3_actions_map['keep'],        # Cassette ID, 
+            "(0x0018,0x1008)": self.tcia_to_ps3_actions_map['keep'],        # Gantry ID, 
+            "(0x0018,0x700A)": self.tcia_to_ps3_actions_map['keep'],        # Detector ID, 
+            "(0x0032,0x1020)": self.tcia_to_ps3_actions_map['keep'],        # Scheduled Study Location, 
+            "(0x0032,0x1021)": self.tcia_to_ps3_actions_map['keep'],        # Scheduled Study Location AE Title, 
+            "(0x0040,0x0001)": self.tcia_to_ps3_actions_map['keep'],        # Scheduled Station AE Title, 
+            "(0x0040,0x0010)": self.tcia_to_ps3_actions_map['keep'],        # Scheduled Station Name, 
+            "(0x0040,0x0011)": self.tcia_to_ps3_actions_map['keep'],        # Scheduled Procedure Step Location, 
+            "(0x0040,0x0241)": self.tcia_to_ps3_actions_map['keep'],        # Performed Station AE Title, 
+            "(0x0040,0x0242)": self.tcia_to_ps3_actions_map['keep'],        # Performed Station Name, 
+            "(0x0040,0x4028)": self.tcia_to_ps3_actions_map['keep'],        # Performed Station Name Code Sequence, 
+            "(0x0040,0x4025)": self.tcia_to_ps3_actions_map['keep'],        # Scheduled Station Name Code Sequence, 
+            "(0x0040,0x4027)": self.tcia_to_ps3_actions_map['keep'],        # Scheduled Station Geographic Location Code Sequence,
+            "(0x0040,0x4030)": self.tcia_to_ps3_actions_map['keep'],        # Performed Station Geographic Location Code Sequence,
+
+            # ensure all the free texts tags are applied only replace actions            
+            "(0x0008, 0x2111)": self.tcia_to_ps3_actions_map['replace'],    # Derivation Description
+            "(0x0010, 0x2180)": self.tcia_to_ps3_actions_map['keep'],       # Occupation
+            "(0x0010, 0x4000)": self.tcia_to_ps3_actions_map['replace'],    # Patient Comments
+            "(0x0020, 0x4000)": self.tcia_to_ps3_actions_map['replace'],    # Image Comments
+            "(0x0040, 0x2001)": self.tcia_to_ps3_actions_map['replace'],    # Reason for Imaging Service Request
+            
+            # As of January 2024, other tags including Allergies, Patient State, Occupation, and all Comment fields are no longer 
+            # being kept as they either frequently contain PHI or are being removed as part of best practices.
+            # Study Comments did not through any error after removal in validation report
+            # "(0x0010, 0x2110)": self.tcia_to_ps3_actions_map['replace'],    # Allergies
+            # "(0x0038, 0x0500)": self.tcia_to_ps3_actions_map['replace'],    # Patient State
+            # "(0x0032, 0x4000)": self.tcia_to_ps3_actions_map['replace'],    # Study Comments
+            # "(0x0008, 0x4000)": self.tcia_to_ps3_actions_map['replace'],    # Identifying Comments
+            # "(0x0038, 0x4000)": self.tcia_to_ps3_actions_map['replace'],    # Visit Comments
+            # "(0x0020, 0x9158)": self.tcia_to_ps3_actions_map['replace'],    # Frame Comments
+            # "(0x0040, 0x0280)": self.tcia_to_ps3_actions_map['replace'],    # Comments on Performed Procedure Step
+            # Requested Procedure Comments did not through any error after removal in validation report
+            # "(0x0040, 0x1400)": self.tcia_to_ps3_actions_map['replace'],    # Requested Procedure Comments
+            # Imaging Service Request Comments did not through any error after removal in validation report
+            # "(0x0040, 0x2400)": self.tcia_to_ps3_actions_map['replace'],    # Imaging Service Request Comments
         }
         
         actions_map_name_functions.update({
@@ -146,6 +189,30 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
         element = dataset.get(tag)
         if element is not None:
             self.tcia_keep_element(element)
+
+    def shift_date_timestamp(self, elementval: str):
+        elementval = int(elementval)
+
+        # not a date
+        if elementval == 0:
+            return elementval
+        
+        try:
+            original_date = datetime.fromtimestamp(elementval)
+        except Exception as e:
+            self.logger.warning(f"Could not able to parse as datetime from timestamp {elementval}")
+            return elementval
+        
+        # Create a timedelta object based on the provided offset values
+        offset = timedelta(days=self.shift_date_offset)
+
+        # Shift the date by the offset
+        new_date = original_date + offset
+
+        self.logger.debug(f"Date has been shifted from {elementval} to {new_date.timestamp()} from timestamp format")
+        
+        return str(int(new_date.timestamp()))
+
     
     def tcia_replace_date_time(self, dataset, tag):
         element = dataset.get(tag)
@@ -154,18 +221,26 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
                 self.custom_replace_date_time_element(element)
             else:
                 parsed = False
+                elval = str(element.value)
                 try:
-                    parsed_date, _ = parse_date_string(str(element.value))
+                    parsed_date, _ = parse_date_string(elval)
                     parsed = True
                 except Exception as e:
-                    self.logger.warning(f"Could not able to parse as date {element.value}")
+                    # self.logger.warning(f"Could not able to parse as date {element.value}")
+                    pass
+                
+                newval = element.value
 
                 if parsed:
-                    newval = self.shift_date(str(element.value), days=self.shift_date_offset)
-                    if element.VR in ('SL', 'UL', 'US', 'SS'):
-                        element.value = int(newval)
-                    else:
-                        element.value = newval
+                    newval = self.shift_date(elval, days=self.shift_date_offset)
+                elif elval.isnumeric():
+                    newval = self.shift_date_timestamp(elval)
+
+                if element.VR in ('SL', 'UL', 'US', 'SS'):
+                    element.value = int(newval)
+                else:
+                    element.value = newval
+
     
     def tcia_delete_element(self, dataset, element):
         # dont delete if it does not contain any value
@@ -347,6 +422,7 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
                     parsed_date, _ = parse_date_string(str(element.value))
                     parsed = True
                 except Exception as e:
+                    # self.logger.warning(f"Could not able to parse as date {element.value} from fn 'check_and_replace_dates'")
                     continue
                 
                 # replace date if found
@@ -383,6 +459,7 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
                         parsed_date, _ = parse_date_string(str(element.value))
                         parsed = True
                     except Exception as e:
+                        self.logger.warning(f"Could not able to parse as date {element.value} from fn 'check_n_increment_dates_in_vr_sh'")
                         continue
                     
                     # replace date if found
@@ -409,6 +486,7 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
         
         if len(all_texts) > 0:
             tags_w_entities = self.notes_phi_detector.detect_enitity_tags_from_text(all_texts, text_tag_mapping)
+
             for tag in tags_w_entities:
                 element = dataset.get(tag)
                 deid_val = self.notes_phi_detector.deid_element_from_entity_values(element, tags_w_entities[tag])
