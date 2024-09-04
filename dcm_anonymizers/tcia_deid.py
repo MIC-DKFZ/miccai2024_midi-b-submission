@@ -127,24 +127,24 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
             "(0x0008, 0x010C)": self.tcia_to_ps3_actions_map['replace'],    # Coding Scheme UID
             "(0x0040, 0x0310)": self.tcia_to_ps3_actions_map['replace'],    # Comments on Radiation Dose
 
-            "(0x0008,0x1010)": self.tcia_to_ps3_actions_map['keep'],        # Station Name, 
+            # "(0x0008,0x1010)": self.tcia_to_ps3_actions_map['keep'],        # Station Name, 
             "(0x0018,0x1000)": self.tcia_to_ps3_actions_map['keep'],        # Device Serial Number, 
             "(0x0018,0x1004)": self.tcia_to_ps3_actions_map['keep'],        # Plate ID, 
             "(0x0018,0x1005)": self.tcia_to_ps3_actions_map['keep'],        # Generator ID, 
             "(0x0018,0x1007)": self.tcia_to_ps3_actions_map['keep'],        # Cassette ID, 
             "(0x0018,0x1008)": self.tcia_to_ps3_actions_map['keep'],        # Gantry ID, 
             "(0x0018,0x700A)": self.tcia_to_ps3_actions_map['keep'],        # Detector ID, 
-            "(0x0032,0x1020)": self.tcia_to_ps3_actions_map['keep'],        # Scheduled Study Location, 
-            "(0x0032,0x1021)": self.tcia_to_ps3_actions_map['keep'],        # Scheduled Study Location AE Title, 
-            "(0x0040,0x0001)": self.tcia_to_ps3_actions_map['keep'],        # Scheduled Station AE Title, 
-            "(0x0040,0x0010)": self.tcia_to_ps3_actions_map['keep'],        # Scheduled Station Name, 
-            "(0x0040,0x0011)": self.tcia_to_ps3_actions_map['keep'],        # Scheduled Procedure Step Location, 
-            "(0x0040,0x0241)": self.tcia_to_ps3_actions_map['keep'],        # Performed Station AE Title, 
-            "(0x0040,0x0242)": self.tcia_to_ps3_actions_map['keep'],        # Performed Station Name, 
-            "(0x0040,0x4028)": self.tcia_to_ps3_actions_map['keep'],        # Performed Station Name Code Sequence, 
-            "(0x0040,0x4025)": self.tcia_to_ps3_actions_map['keep'],        # Scheduled Station Name Code Sequence, 
-            "(0x0040,0x4027)": self.tcia_to_ps3_actions_map['keep'],        # Scheduled Station Geographic Location Code Sequence,
-            "(0x0040,0x4030)": self.tcia_to_ps3_actions_map['keep'],        # Performed Station Geographic Location Code Sequence,
+            # "(0x0032,0x1020)": self.tcia_to_ps3_actions_map['keep'],        # Scheduled Study Location, 
+            # "(0x0032,0x1021)": self.tcia_to_ps3_actions_map['keep'],        # Scheduled Study Location AE Title, 
+            # "(0x0040,0x0001)": self.tcia_to_ps3_actions_map['keep'],        # Scheduled Station AE Title, 
+            # "(0x0040,0x0010)": self.tcia_to_ps3_actions_map['keep'],        # Scheduled Station Name, 
+            # "(0x0040,0x0011)": self.tcia_to_ps3_actions_map['keep'],        # Scheduled Procedure Step Location, 
+            # "(0x0040,0x0241)": self.tcia_to_ps3_actions_map['keep'],        # Performed Station AE Title, 
+            # "(0x0040,0x0242)": self.tcia_to_ps3_actions_map['keep'],        # Performed Station Name, 
+            # "(0x0040,0x4028)": self.tcia_to_ps3_actions_map['keep'],        # Performed Station Name Code Sequence, 
+            # "(0x0040,0x4025)": self.tcia_to_ps3_actions_map['keep'],        # Scheduled Station Name Code Sequence, 
+            # "(0x0040,0x4027)": self.tcia_to_ps3_actions_map['keep'],        # Scheduled Station Geographic Location Code Sequence,
+            # "(0x0040,0x4030)": self.tcia_to_ps3_actions_map['keep'],        # Performed Station Geographic Location Code Sequence,
 
             # ensure all the free texts tags are applied only replace actions            
             "(0x0008, 0x2111)": self.tcia_to_ps3_actions_map['replace'],    # Derivation Description
@@ -152,6 +152,8 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
             "(0x0010, 0x4000)": self.tcia_to_ps3_actions_map['replace'],    # Patient Comments
             "(0x0020, 0x4000)": self.tcia_to_ps3_actions_map['replace'],    # Image Comments
             "(0x0040, 0x2001)": self.tcia_to_ps3_actions_map['replace'],    # Reason for Imaging Service Request
+            "(0x0040, 0x1002)": self.tcia_to_ps3_actions_map['replace'],    # Reason for the Requested Procedure
+            "(0x0040, 0x1400)": self.tcia_to_ps3_actions_map['replace'],    # Requested Procedure Comments
             
             # As of January 2024, other tags including Allergies, Patient State, Occupation, and all Comment fields are no longer 
             # being kept as they either frequently contain PHI or are being removed as part of best practices.
@@ -163,8 +165,6 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
             # "(0x0038, 0x4000)": self.tcia_to_ps3_actions_map['replace'],    # Visit Comments
             # "(0x0020, 0x9158)": self.tcia_to_ps3_actions_map['replace'],    # Frame Comments
             # "(0x0040, 0x0280)": self.tcia_to_ps3_actions_map['replace'],    # Comments on Performed Procedure Step
-            # Requested Procedure Comments did not through any error after removal in validation report
-            # "(0x0040, 0x1400)": self.tcia_to_ps3_actions_map['replace'],    # Requested Procedure Comments
             # Imaging Service Request Comments did not through any error after removal in validation report
             # "(0x0040, 0x2400)": self.tcia_to_ps3_actions_map['replace'],    # Imaging Service Request Comments
         }
@@ -424,6 +424,11 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
                 except Exception as e:
                     # self.logger.warning(f"Could not able to parse as date {element.value} from fn 'check_and_replace_dates'")
                     continue
+                
+                # ignore if parsed date before 1900 or in future date
+                most_earlier_date = datetime(1900, 1, 1)
+                if (parsed_date.date() > datetime.today().date()) or (parsed_date.date() < most_earlier_date.date()):
+                    parsed = False
                 
                 # replace date if found
                 if parsed:
