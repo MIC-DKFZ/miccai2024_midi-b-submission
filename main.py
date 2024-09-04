@@ -15,7 +15,7 @@ from dcm_anonymizers.anonymizer import Anonymizer
     
 DEID_DATASET_ROOT = '/home/r079a/Desktop/de-identification/dataset/midi-test-data'
 
-# 1226392
+# 1451954
 if __name__ == "__main__":
     anonymizer = Anonymizer(
         input_path=Path(DEID_DATASET_ROOT, 'input_data_half'),

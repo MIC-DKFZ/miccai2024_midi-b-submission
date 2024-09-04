@@ -280,6 +280,10 @@ class Anonymizer:
                     progress_bar.update(1)
                     count += 1
                     continue
+                    
+                # if count == 9580:
+                #     print(dcm)
+                #     exit()
                 
                 if not debug_item:
                     # if not self.anonymized_file_exists(dcm, dir):
