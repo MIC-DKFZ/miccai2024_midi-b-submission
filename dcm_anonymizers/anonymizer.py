@@ -11,7 +11,7 @@ logging.basicConfig(
     format='%(name)s :: %(levelname)-8s :: %(message)s',
     level=logging.DEBUG,
     handlers=[
-        logging.FileHandler(filename="debug_{}.log".format(timestamp), mode = "a"),
+        logging.FileHandler(filename=".logs/debug_{}.log".format(timestamp), mode = "a"),
         logging.StreamHandler()
     ],
     force=True
@@ -28,7 +28,13 @@ from dcm_anonymizers.tcia_deid import DCMTCIAAnonymizer
 from dcm_anonymizers.private_tags_extractor import PrivateTagsExtractorV2
 
 class Anonymizer:
-    def __init__(self, input_path: str, output_path: str, preserve_dir_struct: bool = False) -> None:
+    def __init__(
+            self, 
+            input_path: str,
+            output_path: str,
+            preserve_dir_struct: bool = False, 
+            detector_logging: bool = False
+        ) -> None:
         output_path = Path(output_path)
 
         self.input_path = input_path
@@ -37,9 +43,12 @@ class Anonymizer:
         self.total_dcms = 0
         self.dcm_dirs = []
         self.series_props = {}
+        self.detector: DcmRobustPHIDetector = None
         self.anonymizer = None
         self.img_anonymizer = None
         self.preserve_dir_struct = preserve_dir_struct
+        self.detector_logging = detector_logging
+
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
 
@@ -64,7 +73,9 @@ class Anonymizer:
         print(f"Total dicoms in the input data: {self.total_dcms}, Total series in the input data: {len(self.dcm_dirs)}")
 
         # initialize model
-        phi_detector = DcmRobustPHIDetector()
+        phi_detector = DcmRobustPHIDetector(
+            logging=self.detector_logging
+        )
         ptags_extr = PrivateTagsExtractorV2()
         # self.anonymizer = DCMPS33Anonymizer(phi_detector=phi_detector)
         self.anonymizer = DCMTCIAAnonymizer(
@@ -74,6 +85,7 @@ class Anonymizer:
             private_tags_extractor=ptags_extr
         )
         self.img_anonymizer = DCMImageAnonymizer(phi_detector=phi_detector)
+        self.detector = phi_detector
 
     
     def create_output_dirs(self):
@@ -227,17 +239,17 @@ class Anonymizer:
             writer.writeheader()
             writer.writerows(data)
 
-    def run_custom_checks_on_dcm(self, dcmpath):
+    def run_custom_checks_on_dcm(self, dcmpath, tag, name):
         dataset = pydicom.dcmread(dcmpath)
         
         element_found = 0
         non_empty = 0
 
         for element in dataset.elements():
-            if element.tag == (0x0020, 0x9158):
+            if element.tag == tag:
                 if isinstance(element, pydicom.dataelem.RawDataElement):
                     element = pydicom.dataelem.DataElement_from_raw(element)
-                assert element.name == "Frame Comments"
+                assert element.name == name
                 element_val = element.value
                 if isinstance(element_val, bytes):
                     element_val = element_val.decode('utf-8')
@@ -250,14 +262,15 @@ class Anonymizer:
 
         return element_found, non_empty
 
-    def run(self):        
+    def run(self, debug_item: tuple = None):        
         print(f"Total dicoms to be anonymized: {self.total_dcms}")
         progress_bar = tqdm.tqdm(total=self.total_dcms)
         
         start_from = 0
         count = 0
-        # total_found = 0
-        # total_non_empty = 0
+
+        total_found = 0
+        total_non_empty = 0
         for idx, dir in enumerate(self.dcm_dirs):            
             patient_attrs_action = self.create_patient_attrs_action(dir)
             
@@ -267,28 +280,41 @@ class Anonymizer:
                     progress_bar.update(1)
                     count += 1
                     continue
-
-                # if not self.anonymized_file_exists(dcm, dir):
-                _, outfile = self.anonymize_metadata_on_file(dcm, dir, patient_attrs_action)
-                # self.logger.debug(f"{history}")                    
-                self.anonymize_image_data_on_file(outfile, replace=True)
-
-                # n_element, n_non_empty = self.run_custom_checks_on_dcm(dcm)
-                # total_found += n_element
-                # total_non_empty += n_non_empty
+                
+                if not debug_item:
+                    # if not self.anonymized_file_exists(dcm, dir):
+                    _, outfile = self.anonymize_metadata_on_file(dcm, dir, patient_attrs_action)
+                    # self.logger.debug(f"{history}")                    
+                    self.anonymize_image_data_on_file(outfile, replace=True)
+                else:
+                    n_element, n_non_empty = self.run_custom_checks_on_dcm(dcm, debug_item[0], debug_item[1])
+                    total_found += n_element
+                    total_non_empty += n_non_empty
 
                 progress_bar.update(1)
                 count += 1
             
         progress_bar.close()
 
-        # print(f"Total {total_found} series found with tag Comments on Frame Comments {total_non_empty} with non empty value.")
+        if debug_item:
+            print(f"Total {total_found} series found with tag {debug_item[1]} {total_non_empty} with non empty value.")
+        else:   
+            series_output_map = self.get_series_output_path_map()
         
-        series_output_map = self.get_series_output_path_map()
-       
-        self.export_csv_from_id_map(self.anonymizer.id_dict, filename="patient_id_mapping")
-        self.export_csv_from_id_map(self.anonymizer.uid_dict, filename="uid_mapping")
-        self.export_csv_from_id_map(series_output_map, filename='path_mapping', fields=['id_old', 'path'])
-        self.logger.info(self.img_anonymizer.change_log)
-        print(self.img_anonymizer.change_log)
-        
+            self.export_csv_from_id_map(self.anonymizer.id_dict, filename="patient_id_mapping")
+            self.export_csv_from_id_map(self.anonymizer.uid_dict, filename="uid_mapping")
+            self.export_csv_from_id_map(series_output_map, filename='path_mapping', fields=['id_old', 'path'])
+            self.logger.info(self.img_anonymizer.change_log)
+            
+            if self.detector_logging:
+                self.export_csv_from_id_map(
+                    self.detector.detected_entity_log, 
+                    filename='detected_entities', 
+                    fields=['entitity', 'count']
+                )
+                self.export_csv_from_id_map(
+                    self.detector.missed_by_whitelist, 
+                    filename='whitelisted_entities', 
+                    fields=['entitity', 'count']
+                )
+

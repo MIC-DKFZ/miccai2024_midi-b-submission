@@ -194,10 +194,14 @@ class DcmPHIDetector:
 
 
 class DcmRobustPHIDetector:
-    def __init__(self) -> None:
+    def __init__(self, logging: bool = False) -> None:
         self.modelname = "OBI-RoBERTa De-ID"
         self.threshold = "No threshold"
         self.pipeline = None
+        
+        self.logging = logging
+        self.detected_entity_log = {}
+        self.missed_by_whitelist = {}
 
         self._init_pipeline()
     
@@ -315,6 +319,14 @@ class DcmRobustPHIDetector:
         entities = [entity for entity in entities if entity[2] > len(element_name)]
         return entities
     
+    def append_entity_count_to_log_dict(self, log_dict: dict, entity: tuple):
+        entity_val = entity[0]
+        if entity_val in log_dict:
+            log_dict[entity_val] += 1
+        else:
+            log_dict[entity_val] = 1
+
+    
     def filter_entities_by_whitelist(self, entities):
         entity_whitelist = [r'(?i)\bbreast?\b', r'(?i)\bcontrast\b', r'(?i)\bbilateral\b']
 
@@ -325,6 +337,8 @@ class DcmRobustPHIDetector:
                 match = re.search(pattrn, entity[0])
                 if match is not None:
                     matched = True
+                    if self.logging:
+                        self.append_entity_count_to_log_dict(self.missed_by_whitelist, entity)
                     break
             if not matched:
                 filtered.append(entity)
@@ -334,10 +348,13 @@ class DcmRobustPHIDetector:
 
     def detect_enitity_tags_from_text(self, all_texts: str, text_tag_mapping: dict):
         entities = self.detect_entities(all_texts)
-
         entities = self.filter_entities_by_whitelist(entities)
-        element_target = {}
- 
+
+        if self.logging:
+            for e in entities:
+                self.append_entity_count_to_log_dict(self.detected_entity_log, e)
+
+        element_target = {} 
         for e in entities:
             e_start = e[2]
             for t in text_tag_mapping:

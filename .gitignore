@@ -12,3 +12,5 @@ data/deid
 
 .tmp
 run
+.logs
+.nohup_outs
