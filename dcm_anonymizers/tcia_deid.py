@@ -426,9 +426,9 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
                     continue
                 
                 # ignore if parsed date before 1900 or in future date
-                most_earlier_date = datetime(1900, 1, 1)
-                if (parsed_date.date() > datetime.today().date()) or (parsed_date.date() < most_earlier_date.date()):
-                    parsed = False
+                # most_earlier_date = datetime(1900, 1, 1)
+                # if (parsed_date.date() > datetime.today().date()) or (parsed_date.date() < most_earlier_date.date()):
+                #     parsed = False
                 
                 # replace date if found
                 if parsed:

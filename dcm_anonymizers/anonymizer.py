@@ -281,7 +281,7 @@ class Anonymizer:
                     count += 1
                     continue
                     
-                # if count == 8435:
+                # if count == 14185:
                 #     print(dcm)
                 #     exit()
                 
