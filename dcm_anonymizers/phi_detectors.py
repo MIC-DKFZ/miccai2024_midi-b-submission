@@ -331,13 +331,14 @@ class DcmRobustPHIDetector:
 
     
     def filter_entities_by_whitelist(self, entities):
-        entity_whitelist = [r'(?i)\bbreast?\b', r'(?i)\bcontrast\b', r'(?i)\bbilateral\b']
+        rgx_tmplt = r'(?i)\b{}?\b'
+        entity_whitelist = ['breast', 'contrast', 'bilateral']
 
         filtered = []
         for entity in entities:
             matched = False
             for pattrn in entity_whitelist:
-                match = re.search(pattrn, entity[0])
+                match = re.search(rgx_tmplt.format(pattrn), entity[0])
                 if match is not None:
                     matched = True
                     if self.logging:
