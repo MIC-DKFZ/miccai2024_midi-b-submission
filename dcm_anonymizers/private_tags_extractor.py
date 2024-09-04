@@ -176,7 +176,7 @@ class PrivateTagsExtractorV2:
                 break
 
         if private_rules is None:
-            print(f"Warning!!! '{block_tag}': {element.name} not found in private tags dictionary")
+            print(f"Warning!!! '{block_tags[0]}': {element.name} not found in private tags dictionary")
             return 'k'
 
         return private_rules['private_disposition']
