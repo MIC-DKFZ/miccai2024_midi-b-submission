@@ -287,7 +287,7 @@ class DcmRobustPHIDetector:
         input -> "Hospital Name: Scott Community Hospital"
         outputs -> [('Scott Community Hospital', 'HOSP', 0)]
         """
-        if text == "":
+        if text.strip() == "":
             return []
         
         outputs = self.run_deid([text])

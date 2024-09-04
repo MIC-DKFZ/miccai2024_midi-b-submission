@@ -99,7 +99,7 @@ class DCMImageAnonymizer:
         if extracted[0] and len(extracted[0]) > 0:           
             for e in extracted[0]:
                 bbox = e[0]
-                text = e[1][0]
+                text = e[1][0].strip()
 
                 start = len(texts)
                 texts += f"{text}\n"
@@ -148,7 +148,6 @@ class DCMImageAnonymizer:
 
             
         if len(detected_polygons) > 0:
-            # img = ds.pixel_array.copy()       
             img_arr = self.draw_filled_polygons(img_arr, detected_polygons)
             updated = True
         
@@ -187,7 +186,9 @@ class DCMImageAnonymizer:
             drawn_img, updated = self.anonymize_single_slice(img)
             
         if updated > 0:
-            ds.PixelData = drawn_img
+            assert drawn_img.shape == pixel_data.shape, f"Processed image shape mismatch {pixel_data.shape} to {drawn_img.shape}"
+            ds.PixelData = drawn_img.tobytes()
+
         
         return updated
 

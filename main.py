@@ -13,13 +13,14 @@ from dcm_anonymizers.anonymizer import Anonymizer
 
 #     anonymizer.run(debug_item=((0x0040, 0x1400), "Requested Procedure Comments"))
     
-DEID_DATASET_ROOT = '/home/r079a/Desktop/de-identification/dataset/midi-validation-data'
+DEID_DATASET_ROOT = '/home/r079a/Desktop/de-identification/dataset/midi-test-data'
 
-# 2438572
+# 1226392
 if __name__ == "__main__":
     anonymizer = Anonymizer(
-        input_path=Path(DEID_DATASET_ROOT, 'input_data'),
-        output_path=Path(DEID_DATASET_ROOT, 'output_data')
+        input_path=Path(DEID_DATASET_ROOT, 'input_data_half'),
+        output_path=Path(DEID_DATASET_ROOT, 'output_data_half'),
+        detector_logging=True,
     )
 
     anonymizer.run()
