@@ -115,6 +115,12 @@ class PrivateTagsExtractorV2:
                 "vr": "LO",
                 "private_disposition": "d"
             },
+            "(0117,ucsf birp private creator 011710xx,c5)_UN": {
+                "pattern": "(0117,UCSF BIRP PRIVATE CREATOR 011710xx\",c5)",
+                "tag_name": "Protocol compliance",
+                "vr": "UN",
+                "private_disposition": "k"
+            }
         }
 
         self._load_private_tag_dict()
@@ -143,25 +149,34 @@ class PrivateTagsExtractorV2:
 
     @staticmethod
     def get_element_block_tags_with_parents(element, private_blocks: list, parent_blocks: list = []):
-        parent_block_str = ""
-        for idx, parent_tuple in enumerate(parent_blocks):
-            parent_block_tag = PrivateTagsExtractorV2.get_element_block_tag(parent_tuple[0], parent_tuple[1])
-            parent_block_str += f"{parent_block_tag}[<{idx}>]"
-
-        block_tags = []
+        parent_block_str_list = []
 
         for private_block_name in reversed(private_blocks):
-            element_block_tag = PrivateTagsExtractorV2.get_element_block_tag(element, private_block_name)
+            parent_block_str = ""
+            if len(parent_blocks) > 0:
+                for idx, parent_elem in enumerate(parent_blocks):
+                    parent_block_tag = PrivateTagsExtractorV2.get_element_block_tag(parent_elem, private_block_name)
+                    parent_block_str += f"{parent_block_tag}[<{idx}>]"
+                
+                parent_block_str_list.append(parent_block_str)
 
-            vr_val = element.VR
+        if len(parent_block_str_list) == 0:
+            parent_block_str_list.append("")
 
-            # if vr value like VR.UN, split and take last one
-            vr_splits = vr_val.split('.')
-            if len(vr_splits) > 0:
-                vr_val = vr_splits[-1]
+        block_tags = []
+        for parent_block_str in parent_block_str_list:
+            for private_block_name in reversed(private_blocks):
+                element_block_tag = PrivateTagsExtractorV2.get_element_block_tag(element, private_block_name)
 
-            block_tag = f"{parent_block_str}{element_block_tag}_{vr_val}"
-            block_tags.append(block_tag)
+                vr_val = element.VR
+
+                # if vr value like VR.UN, split and take last one
+                vr_splits = vr_val.split('.')
+                if len(vr_splits) > 0:
+                    vr_val = vr_splits[-1]
+
+                block_tag = f"{parent_block_str}{element_block_tag}_{vr_val}"
+                block_tags.append(block_tag)
 
         return block_tags
 

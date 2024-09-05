@@ -331,22 +331,47 @@ class DcmRobustPHIDetector:
 
     
     def filter_entities_by_whitelist(self, entities):
-        rgx_tmplt = r'(?i)\b{}?\b'
-        entity_whitelist = ['breast', 'contrast', 'bilateral']
+        
+        word_match_tmplt = r'(?i)\b{}\b'
+        whole_string_match_templt = r'(?i)^{}$'
+
+        entity_whitelist = [
+            'breast?', 'contrast', 'bilateral', 'ressonancia', 
+            'magnetica', 'pelve', 'lung', 'chest', 'abdomen', 
+            'miednicy',
+        ]
+
+        exact_match_whitelist = [
+            ',', '-', '\(', '\)', 
+            'price', 'short', 'glass', 
+            'brzuchmiednica', 'h20', 'day', 
+            'jpeglosslessprocfirstorderredict', 
+            'kidney_mass_hematuria_bmi_under30', 'thins'
+        ]
 
         filtered = []
         for entity in entities:
             matched = False
-            for pattrn in entity_whitelist:
-                match = re.search(rgx_tmplt.format(pattrn), entity[0])
+
+            for pattrn in exact_match_whitelist:
+                match = re.search(whole_string_match_templt.format(pattrn), entity[0])
                 if match is not None:
                     matched = True
                     if self.logging:
                         self.append_entity_count_to_log_dict(self.missed_by_whitelist, entity)
                     break
+
+            if not matched:
+                for pattrn in entity_whitelist:
+                    match = re.search(word_match_tmplt.format(pattrn), entity[0])
+                    if match is not None:
+                        matched = True
+                        if self.logging:
+                            self.append_entity_count_to_log_dict(self.missed_by_whitelist, entity)
+                        break
+
             if not matched:
                 filtered.append(entity)
-
 
         return filtered
 

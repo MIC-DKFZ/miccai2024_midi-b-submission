@@ -281,10 +281,6 @@ class Anonymizer:
                     count += 1
                     continue
                     
-                # if count == 14185:
-                #     print(dcm)
-                #     exit()
-                
                 if not debug_item:
                     # if not self.anonymized_file_exists(dcm, dir):
                     _, outfile = self.anonymize_metadata_on_file(dcm, dir, patient_attrs_action)
@@ -321,4 +317,27 @@ class Anonymizer:
                     filename='whitelisted_entities', 
                     fields=['entitity', 'count']
                 )
-
+    
+    def get_dcm_path_from_idx(self, target_idx: int):
+        progress_bar = tqdm.tqdm(total=target_idx)
+        
+        count = 0
+        target_dcm_path = ''
+        
+        for idx, dir in enumerate(self.dcm_dirs):                        
+            dcms = list_all_files(dir)
+            for dcm in dcms:
+                if count == target_idx:
+                    target_dcm_path = dcm
+                    break
+                
+                progress_bar.update(1)
+                count += 1
+            
+            if target_dcm_path != '':
+                break
+        
+        progress_bar.close()
+        
+        return target_dcm_path
+                
