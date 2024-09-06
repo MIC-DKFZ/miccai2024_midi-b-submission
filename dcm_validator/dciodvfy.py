@@ -4,6 +4,7 @@ import subprocess
 from typing import List
 import pydicom
 from pydicom.datadict import keyword_for_tag, dictionary_VR
+from pydicom.uid import generate_uid
 
 
 class ValidationItem:
@@ -62,9 +63,13 @@ class DCIodValidator():
         self.added_attr_log = {}
         self.ignore_list = [
             'CodeValue', 'CodeMeaning', 
+            'LongCodeValue', 'URNCodeValue',
             'ValueType', 'Manufacturer', 
-            'ClinicalTrialSubjectID', 'ClinicalTrialSubjectReadingID',
-            'Laterality',
+            'ClinicalTrialSubjectID', 'ClinicalTrialSubjectReadingID', 'ClinicalTrialSiteName',
+            'Laterality', 'PurposeOfReferenceCodeSequence',
+            'DoubleFloatRealWorldValueFirstValueMapped', 'DoubleFloatRealWorldValueLastValueMapped',
+            'CodingSchemeDesignator',
+            'ReferencedSOPClassUID', "ReferencedSOPInstanceUID",
         ]
 
     @staticmethod
@@ -221,8 +226,8 @@ class DCIodValidator():
 
 
     @staticmethod
-    def filter_missing_attributes_errors(errors: List[ValidationItem]):
-        filtered = [err for err in errors if 'Missing attribute' in err.message]
+    def filter_missing_attributes_errors(errors: List[ValidationItem], filter_mssg: str = 'Missing attribute'):
+        filtered = [err for err in errors if filter_mssg in err.message]
         filtered = [DCIodValidator.validation_item_to_missing_attribute_item(err) for err in filtered]
         return filtered
 
@@ -258,10 +263,12 @@ class DCIodValidator():
     @staticmethod
     def get_empty_element_value_for_tag(tag):
         elem_vr = dictionary_VR(tag)
-        elem_name = keyword_for_tag(tag)
+        # elem_name = keyword_for_tag(tag)
         elem_val = None
-        if elem_vr in ("SH", "PN", "UI", "LO", "LT", "CS", "ST", "UT"):          
+        if elem_vr in ("SH", "PN", "LO", "LT", "CS", "ST", "UT"):          
             elem_val = ""
+        elif elem_vr == "UI":
+            elem_val = generate_uid()
         elif elem_vr in ("DT", "DA", "TM"):
             elem_val = ""
         elif elem_vr in ("UL", "FL", "FD", "SL", "SS", "US"):
@@ -274,12 +281,12 @@ class DCIodValidator():
             pass
         return elem_val
 
-    def create_element_from_tag(self, tag):
+    def create_element_from_tag(self, tag, forced: bool = False):
         elem_vr = dictionary_VR(tag)
         elem_name = keyword_for_tag(tag)
         elem_val = DCIodValidator.get_empty_element_value_for_tag(tag)
 
-        if elem_name in self.ignore_list:
+        if elem_name in self.ignore_list and not forced:
             return None
         elif elem_val is None:
             return None
@@ -287,11 +294,15 @@ class DCIodValidator():
             elem = pydicom.dataelem.DataElement(tag, elem_vr, elem_val)
             return elem
         
-    def create_empty_element(self, ds, element_tag, parents: list = []):
+    def create_empty_element(self, ds, element_tag, parents: list = [], forced: bool = False):
         created = False
         selected_ds = None
         if len(parents) > 1:
-            raise NotImplementedError
+            sub_dataset = ds
+            for ptag in parents:
+                sq_elem = sub_dataset.get(ptag)
+                sub_dataset = sq_elem.value[0]
+            selected_ds = sub_dataset
         elif len(parents) == 1:
             element = ds.get(parents[0])
             if element is not None:
@@ -304,7 +315,7 @@ class DCIodValidator():
             selected_ds = ds
 
         if selected_ds is not None:
-            new_element = self.create_element_from_tag(element_tag)
+            new_element = self.create_element_from_tag(element_tag, forced)
             if new_element is not None:
                 selected_ds.add(new_element)
                 created = True
@@ -342,6 +353,15 @@ class DCIodValidator():
             if created:
                 attribute_created += 1
                 added_tags.append(error.tag)
+
+        missing_sequence_number_attr_errs = DCIodValidator.filter_missing_attributes_errors(errors, filter_mssg='Bad Sequence number')
+        for error in missing_sequence_number_attr_errs:
+            # forcefully add ReferencedPatientSequence(0008,1120)[1]ReferencedSOPInstanceUID(0008,1155)
+            if error.tag == (0x0008, 0x1120):
+                created = self.create_empty_element(ds, pydicom.tag.Tag(0x0008, 0x1150), [error.tag], forced=True)
+                if created:
+                    attribute_created += 1
+                    added_tags.append(error.tag)
 
         # update dicom if new attribute added
         if attribute_created > 0:

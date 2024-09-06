@@ -16,7 +16,7 @@ from dcm_anonymizers.anonymizer import Anonymizer
     
 DEID_DATASET_ROOT = '/home/r079a/Desktop/de-identification/dataset/midi-validation-data'
 
-# 1168116
+# 524288
 if __name__ == "__main__":
     anonymizer = Anonymizer(
         input_path=Path(DEID_DATASET_ROOT, 'input_data'),
@@ -28,5 +28,5 @@ if __name__ == "__main__":
 
     pprint(anonymizer.validator.added_attr_log)
 
-    # dcm_path = anonymizer.get_dcm_path_from_idx(2073)
+    # dcm_path = anonymizer.get_dcm_path_from_idx(6179)
     # print(dcm_path)
