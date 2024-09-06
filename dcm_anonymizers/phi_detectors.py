@@ -342,7 +342,7 @@ class DcmRobustPHIDetector:
         ]
 
         exact_match_whitelist = [
-            ',', '-', '\(', '\)', 
+            ',', '-', r'\(', r'\)', 
             'price', 'short', 'glass', 
             'brzuchmiednica', 'h20', 'day', 
             'jpeglosslessprocfirstorderredict', 
