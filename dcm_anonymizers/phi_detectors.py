@@ -7,6 +7,10 @@ from transformers import pipeline
 
 from deid_app.robust_app import RobustDeID as RobustDeIDPipeline
 
+import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+
 class DcmPHIDetector:
     def __init__(self) -> None:
         self.model_name = "obi/deid_roberta_i2b2"

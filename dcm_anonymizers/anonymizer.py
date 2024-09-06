@@ -298,16 +298,11 @@ class Anonymizer:
                     
                 if not debug_item:
                     # if not self.anonymized_file_exists(dcm, dir):
-                    # _, outfile = self.anonymize_metadata_on_file(dcm, dir, patient_attrs_action)
+                    _, outfile = self.anonymize_metadata_on_file(dcm, dir, patient_attrs_action)
                     # self.logger.debug(f"{history}")                    
-                    # self.anonymize_image_data_on_file(outfile, replace=True)
+                    self.anonymize_image_data_on_file(outfile, replace=True)
                     # validate the output file and add if missing attributes found
-                    series_info = self.series_props[dir]
-
-                    filename = os.path.basename(dcm)
-                    output_file = f"{series_info['output_path']}/{filename}"
-                    shutil.copy(dcm, output_file)
-                    self.validate_dicom_file(output_file, dcm, ensure_validation=False)
+                    self.validate_dicom_file(outfile, dcm, ensure_validation=False)
                 else:
                     n_element, n_non_empty = self.run_custom_checks_on_dcm(dcm, debug_item[0], debug_item[1])
                     total_found += n_element

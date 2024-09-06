@@ -315,6 +315,11 @@ class DCIodValidator():
             selected_ds = ds
 
         if selected_ds is not None:
+            # if element already exists in dataset return
+            element = selected_ds.get(element_tag)
+            if element is not None:
+                print(f"{keyword_for_tag(element_tag)} already present in the dataset")
+                return created
             new_element = self.create_element_from_tag(element_tag, forced)
             if new_element is not None:
                 selected_ds.add(new_element)
