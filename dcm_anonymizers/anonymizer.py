@@ -281,7 +281,7 @@ class Anonymizer:
         print(f"Total dicoms to be anonymized: {self.total_dcms}")
         progress_bar = tqdm.tqdm(total=self.total_dcms)
         
-        start_from = 0
+        start_from = 6439
         count = 0
 
         total_found = 0

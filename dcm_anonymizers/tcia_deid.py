@@ -251,7 +251,14 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
         if element.VR == "DA":
             element.value = ''
         else:
-            simpledicomanonymizer.delete_element(dataset, element)
+            # apply forcefull rule not to delete "(0x0008, 0x1120)" if it is empty
+            # Referenced Patient Sequence
+            # can it be applied to all sq with 0 length!! ? !!
+            # ------------------------------------------------------------------
+            if element.VR == "SQ" and len(element.value) == 0 and element.tag == (0x0008, 0x1120) :
+                pass
+            else:
+                simpledicomanonymizer.delete_element(dataset, element)
 
     def tcia_delete(self, dataset, tag):
         element = dataset.get(tag)

@@ -14,19 +14,18 @@ from dcm_anonymizers.anonymizer import Anonymizer
 
 #     anonymizer.run(debug_item=((0x0040, 0x1400), "Requested Procedure Comments"))
     
-DEID_DATASET_ROOT = '/home/r079a/Desktop/de-identification/dataset/midi-validation-data'
+DEID_DATASET_ROOT = '/home/r079a/Desktop/de-identification/dataset/midi-test-data'
 
-# 619626
+# 944647
 if __name__ == "__main__":
     anonymizer = Anonymizer(
         input_path=Path(DEID_DATASET_ROOT, 'input_data'),
-        output_path=Path(DEID_DATASET_ROOT, 'output_data'),
+        output_path=Path(DEID_DATASET_ROOT, 'output_data_sample'),
         detector_logging=True,
     )
 
-    anonymizer.run()
+    # anonymizer.run()
+    # pprint(anonymizer.validator.added_attr_log)
 
-    pprint(anonymizer.validator.added_attr_log)
-
-    # dcm_path = anonymizer.get_dcm_path_from_idx(6179)
-    # print(dcm_path)
+    dcm_path = anonymizer.get_dcm_path_from_idx(6439)
+    print(dcm_path)

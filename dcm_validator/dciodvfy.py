@@ -92,7 +92,8 @@ class DCIodValidator():
 
             splitted = tuple(l.split(" - "))
 
-            outputs.append(splitted)
+            if splitted[0].strip().lower() in ('warning', 'error'):
+                outputs.append(splitted)
 
         return outputs
 
@@ -331,8 +332,10 @@ class DCIodValidator():
                     self.added_attr_log[elem_name] = 1   
             else:
                 elem_name = keyword_for_tag(element_tag)
-                if elem_name not in self.ignore_list:
-                    print(f"Element can not be created for tag {element_tag} {keyword_for_tag(element_tag)}") 
+                # no need to log if element name already in the ignore list or
+                # element is type of Sequence
+                if (elem_name not in self.ignore_list) and ('Sequence' not in elem_name):
+                    print(f"Element can not be created for tag {element_tag} {elem_name}") 
         
         return created
     
