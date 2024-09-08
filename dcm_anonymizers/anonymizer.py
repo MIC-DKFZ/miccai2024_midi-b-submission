@@ -281,7 +281,7 @@ class Anonymizer:
         print(f"Total dicoms to be anonymized: {self.total_dcms}")
         progress_bar = tqdm.tqdm(total=self.total_dcms)
         
-        start_from = 6439
+        start_from = 0
         count = 0
 
         total_found = 0
@@ -322,6 +322,7 @@ class Anonymizer:
             self.export_csv_from_id_map(self.anonymizer.uid_dict, filename="uid_mapping")
             self.export_csv_from_id_map(series_output_map, filename='path_mapping', fields=['id_old', 'path'])
             self.logger.info(self.img_anonymizer.change_log)
+            self.logger.info(self.validator.added_attr_log)
             
             if self.detector_logging:
                 self.export_csv_from_id_map(

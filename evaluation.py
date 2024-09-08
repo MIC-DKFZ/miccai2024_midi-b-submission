@@ -197,7 +197,7 @@ if __name__ == "__main__":
 
     for i in range(total_series):
         current_elements, current_mismatched, current_mismatching_tags = evaluate_series_by_index(
-            i, loader, series_output_map, img_anonymizer, evaluate_pixel_data=False
+            i, loader, series_output_map, img_anonymizer, evaluate_pixel_data=True
         )
         total_elements += current_elements
         total_mismatched += current_mismatched

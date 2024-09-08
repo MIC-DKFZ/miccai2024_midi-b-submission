@@ -1,4 +1,3 @@
-from pprint import pprint
 from pathlib import Path
 
 from dcm_anonymizers.anonymizer import Anonymizer
@@ -12,20 +11,18 @@ from dcm_anonymizers.anonymizer import Anonymizer
 #         detector_logging=True,
 #     )
 
-#     anonymizer.run(debug_item=((0x0040, 0x1400), "Requested Procedure Comments"))
+#     anonymizer.run()
     
 DEID_DATASET_ROOT = '/home/r079a/Desktop/de-identification/dataset/midi-test-data'
 
-# 944647
+# 1079307
 if __name__ == "__main__":
     anonymizer = Anonymizer(
         input_path=Path(DEID_DATASET_ROOT, 'input_data'),
-        output_path=Path(DEID_DATASET_ROOT, 'output_data_sample'),
-        detector_logging=True,
+        output_path=Path(DEID_DATASET_ROOT, 'output_data'),
     )
 
-    # anonymizer.run()
-    # pprint(anonymizer.validator.added_attr_log)
+    anonymizer.run()
 
-    dcm_path = anonymizer.get_dcm_path_from_idx(6439)
-    print(dcm_path)
+    # dcm_path = anonymizer.get_dcm_path_from_idx(6439)
+    # print(dcm_path)

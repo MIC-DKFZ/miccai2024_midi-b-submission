@@ -269,7 +269,8 @@ class DCIodValidator():
         if elem_vr in ("SH", "PN", "LO", "LT", "CS", "ST", "UT"):          
             elem_val = ""
         elif elem_vr == "UI":
-            elem_val = generate_uid()
+            # elem_val = generate_uid()
+            elem_val = ""
         elif elem_vr in ("DT", "DA", "TM"):
             elem_val = ""
         elif elem_vr in ("UL", "FL", "FD", "SL", "SS", "US"):
