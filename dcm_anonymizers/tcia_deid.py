@@ -209,7 +209,7 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
         # Shift the date by the offset
         new_date = original_date + offset
 
-        self.logger.debug(f"Date has been shifted from {elementval} to {new_date.timestamp()} from timestamp format")
+        self.logger.debug(f"Date has been shifted from {elementval} to {int(new_date.timestamp())} from timestamp format")
         
         return str(int(new_date.timestamp()))
 
@@ -251,7 +251,14 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
         if element.VR == "DA":
             element.value = ''
         else:
-            simpledicomanonymizer.delete_element(dataset, element)
+            # apply forcefull rule not to delete "(0x0008, 0x1120)" if it is empty
+            # Referenced Patient Sequence
+            # can it be applied to all sq with 0 length!! ? !!
+            # ------------------------------------------------------------------
+            if element.VR == "SQ" and len(element.value) == 0 and element.tag == (0x0008, 0x1120) :
+                pass
+            else:
+                simpledicomanonymizer.delete_element(dataset, element)
 
     def tcia_delete(self, dataset, tag):
         element = dataset.get(tag)
@@ -426,9 +433,9 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
                     continue
                 
                 # ignore if parsed date before 1900 or in future date
-                most_earlier_date = datetime(1900, 1, 1)
-                if (parsed_date.date() > datetime.today().date()) or (parsed_date.date() < most_earlier_date.date()):
-                    parsed = False
+                # most_earlier_date = datetime(1900, 1, 1)
+                # if (parsed_date.date() > datetime.today().date()) or (parsed_date.date() < most_earlier_date.date()):
+                #     parsed = False
                 
                 # replace date if found
                 if parsed:
@@ -584,16 +591,17 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
                     continue
 
             if name == "Private Creator":
+                # if value already exists remove the earlier value
+                # and prioritize current value
+                if value in private_creator_blocks:
+                    private_creator_blocks.remove(value)
                 private_creator_blocks.append(value)
-            # elif len(parent_elements) > 0:
-            #     immidiate_parent = parent_elements[-1]
-            #     private_creator_blocks(immidiate_parent[1])
             
             # Process the element
             if isinstance(value, Sequence):
                 # If the value is a Sequence, recursively traverse each Dataset in the Sequence
                 updated_parent_elements = parent_elements.copy()
-                updated_parent_elements.append((elem, private_creator_blocks[-1]))
+                updated_parent_elements.append(elem)
                 for i, item in enumerate(value):
                     self.walk_and_anonymize_private_dataset(
                         item, 

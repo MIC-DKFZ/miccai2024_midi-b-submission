@@ -58,6 +58,10 @@ def parse_date_string(date_string):
     for date_format in date_formats:
         try:
             formatted = datetime.strptime(date_string, date_format)
+            # ignore if parsed date before 1900 or in future date
+            most_earlier_date = datetime(1900, 1, 1)
+            if (formatted.date() > datetime.today().date()) or (formatted.date() < most_earlier_date.date()):
+                raise ValueError(f"Date string '{date_string}' out of range")
             return formatted, date_format
         except ValueError:
             continue

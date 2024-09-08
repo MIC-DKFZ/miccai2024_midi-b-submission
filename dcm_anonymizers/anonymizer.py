@@ -1,4 +1,5 @@
 import os
+import shutil
 import tqdm
 import csv
 import pydicom
@@ -26,6 +27,7 @@ from dcm_anonymizers.img_anonymizers import DCMImageAnonymizer
 from dcm_anonymizers.ps_3_3 import DCMPS33Anonymizer, replace_with_value, format_action_dict
 from dcm_anonymizers.tcia_deid import DCMTCIAAnonymizer
 from dcm_anonymizers.private_tags_extractor import PrivateTagsExtractorV2
+from dcm_validator.dciodvfy import DCIodValidator
 
 class Anonymizer:
     def __init__(
@@ -48,6 +50,7 @@ class Anonymizer:
         self.img_anonymizer = None
         self.preserve_dir_struct = preserve_dir_struct
         self.detector_logging = detector_logging
+        self.validator: DCIodValidator = None
 
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
@@ -86,6 +89,7 @@ class Anonymizer:
         )
         self.img_anonymizer = DCMImageAnonymizer(phi_detector=phi_detector)
         self.detector = phi_detector
+        self.validator = DCIodValidator()
 
     
     def create_output_dirs(self):
@@ -201,6 +205,17 @@ class Anonymizer:
 
         return history, output_file
     
+    def validate_dicom_file(self, target_dcm_path: str, source_dcm_path: str = "", ensure_validation: bool = True):
+        valid_after_anonymization = True
+        if ensure_validation and source_dcm_path != "":
+            valid_after_anonymization = self.validator.compare_dicom_validations(source_dcm_path, target_dcm_path)
+        
+        if valid_after_anonymization:
+            self.validator.populate_missing_attributes(target_dcm_path)
+        else:
+            print(f"Validation Failed after anonymization on file: {source_dcm_path}")
+
+    
     def anonymize_image_data_on_file(self, filepath: str, replace: bool = True):
 
         output_file = filepath
@@ -280,12 +295,14 @@ class Anonymizer:
                     progress_bar.update(1)
                     count += 1
                     continue
-                
+                    
                 if not debug_item:
                     # if not self.anonymized_file_exists(dcm, dir):
                     _, outfile = self.anonymize_metadata_on_file(dcm, dir, patient_attrs_action)
                     # self.logger.debug(f"{history}")                    
                     self.anonymize_image_data_on_file(outfile, replace=True)
+                    # validate the output file and add if missing attributes found
+                    self.validate_dicom_file(outfile, dcm, ensure_validation=False)
                 else:
                     n_element, n_non_empty = self.run_custom_checks_on_dcm(dcm, debug_item[0], debug_item[1])
                     total_found += n_element
@@ -305,6 +322,7 @@ class Anonymizer:
             self.export_csv_from_id_map(self.anonymizer.uid_dict, filename="uid_mapping")
             self.export_csv_from_id_map(series_output_map, filename='path_mapping', fields=['id_old', 'path'])
             self.logger.info(self.img_anonymizer.change_log)
+            self.logger.info(self.validator.added_attr_log)
             
             if self.detector_logging:
                 self.export_csv_from_id_map(
@@ -317,4 +335,27 @@ class Anonymizer:
                     filename='whitelisted_entities', 
                     fields=['entitity', 'count']
                 )
-
+    
+    def get_dcm_path_from_idx(self, target_idx: int):
+        progress_bar = tqdm.tqdm(total=target_idx)
+        
+        count = 0
+        target_dcm_path = ''
+        
+        for idx, dir in enumerate(self.dcm_dirs):                        
+            dcms = list_all_files(dir)
+            for dcm in dcms:
+                if count == target_idx:
+                    target_dcm_path = dcm
+                    break
+                
+                progress_bar.update(1)
+                count += 1
+            
+            if target_dcm_path != '':
+                break
+        
+        progress_bar.close()
+        
+        return target_dcm_path
+                
