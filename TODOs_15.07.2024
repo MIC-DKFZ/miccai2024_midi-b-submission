@@ -1,0 +1,16 @@
+- note down the rules that we see in the test data - Hamideh
+- read studies on privacy and see if we are missing something in our rules: https://www.synapse.org/Synapse:syn53065760/wiki/627878 - Hamideh
+- implement rules TCIA - Rajesh
+- implement rules PS31.5 - Rajesh
+- combine OCR, rules, dicom anonymizer (?) in the same algorithm 
+- verify on the data we have (PHI test dataset) 
+- evaluation method (either validation script given, or our own) - Stefan
+- find out what the answer db is - Stefan
+
+ADVANCED STEPS:
+- try out other models than RoBERTa (LLM?)
+- fine-tune LLM on the synthetic dataset
+
+DEADLINES:
+- implementation: 30.07.2024
+- paper 4 pages: 29.08.2024
