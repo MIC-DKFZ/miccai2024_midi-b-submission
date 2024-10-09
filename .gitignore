@@ -14,3 +14,7 @@ data/deid
 run
 .logs
 .nohup_outs
+
+TODOs_15.07.2024
+.vscode/
+docs/
