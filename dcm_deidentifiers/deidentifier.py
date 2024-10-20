@@ -21,12 +21,12 @@ logging.basicConfig(
 
 from dicomanonymizer.anonymizer import isDICOMType
 
-from dcm_anonymizers.utils import ensure_dir, list_all_files
-from dcm_anonymizers.phi_detectors import DcmPHIDetector, DcmRobustPHIDetector
-from dcm_anonymizers.img_anonymizers import DCMImageAnonymizer
-from dcm_anonymizers.ps_3_3 import DCMPS33Anonymizer, replace_with_value, format_action_dict
-from dcm_anonymizers.tcia_deid import DCMTCIAAnonymizer
-from dcm_anonymizers.private_tags_extractor import PrivateTagsExtractorV2
+from dcm_deidentifiers.utils import ensure_dir, list_all_files
+from dcm_deidentifiers.phi_detectors import DcmPHIDetector, DcmRobustPHIDetector
+from dcm_deidentifiers.img_deidentifier import DCMImageDeidentifier
+from dcm_deidentifiers.ps_3_3 import DCMPS33Anonymizer, replace_with_value, format_action_dict
+from dcm_deidentifiers.tcia_deid import DCMTCIADeidentifier
+from dcm_deidentifiers.private_tags_extractor import PrivateTagsExtractorV2
 from dcm_validator.dciodvfy import DCIodValidator
 
 class Anonymizer:
@@ -81,13 +81,13 @@ class Anonymizer:
         )
         ptags_extr = PrivateTagsExtractorV2()
         # self.anonymizer = DCMPS33Anonymizer(phi_detector=phi_detector)
-        self.anonymizer = DCMTCIAAnonymizer(
+        self.anonymizer = DCMTCIADeidentifier(
             phi_detector=None,
             notes_phi_detector=phi_detector,
             soft_detection=True,
             private_tags_extractor=ptags_extr
         )
-        self.img_anonymizer = DCMImageAnonymizer(phi_detector=phi_detector)
+        self.img_anonymizer = DCMImageDeidentifier(phi_detector=phi_detector)
         self.detector = phi_detector
         self.validator = DCIodValidator()
 

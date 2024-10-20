@@ -17,12 +17,12 @@ from dicomanonymizer.simpledicomanonymizer import (
 )
 import pydicom.tag
 
-from dcm_anonymizers.phi_detectors import DcmPHIDetector, DcmRobustPHIDetector
-from dcm_anonymizers.ps_3_3 import DCMPS33Anonymizer, replace_with_value
-from dcm_anonymizers.utils import parse_date_string
-from dcm_anonymizers.private_tags_extractor import PrivateTagsExtractorV2
+from dcm_deidentifiers.phi_detectors import DcmPHIDetector, DcmRobustPHIDetector
+from dcm_deidentifiers.ps_3_3 import DCMPS33Anonymizer, replace_with_value
+from dcm_deidentifiers.utils import parse_date_string
+from dcm_deidentifiers.private_tags_extractor import PrivateTagsExtractorV2
 
-TCIA_DEID_ATTRS_JSON = 'dcm_anonymizers/tcia_deid_attrs.json'
+TCIA_DEID_ATTRS_JSON = 'dcm_deidentifiers/tcia_deid_attrs.json'
 SHIFT_DATE_OFFSET = 120
 
 def load_ps3_tags(json_path: str):
@@ -51,7 +51,7 @@ def count_words(s):
     
     return len(words)
 
-class DCMTCIAAnonymizer(DCMPS33Anonymizer):
+class DCMTCIADeidentifier(DCMPS33Anonymizer):
     def __init__(
             self, 
             phi_detector: DcmRobustPHIDetector = None,
@@ -537,7 +537,7 @@ class DCMTCIAAnonymizer(DCMPS33Anonymizer):
         return groups, creators
 
     # def get_private_tags_anonymize_actions(self, dataset:pydicom.Dataset):
-    #     groups, creators = DCMTCIAAnonymizer.extract_private_groups_n_creators(dataset)
+    #     groups, creators = DCMTCIADeidentifier.extract_private_groups_n_creators(dataset)
     #     df_filtered_by_active_groups = self.private_tags_extractor.filter_by_tag_group(groups)
         
     #     self.private_tags_extractor.filtered_private_tag_df = df_filtered_by_active_groups

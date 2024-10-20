@@ -6,9 +6,9 @@ import tqdm
 from pydicom import dcmread
 
 from utils.dataloaders import MIDIEvalDataLoader
-from dcm_anonymizers.utils import list_all_files
-from dcm_anonymizers.phi_detectors import DcmRobustPHIDetector
-from dcm_anonymizers.img_anonymizers import DCMImageAnonymizer
+from dcm_deidentifiers.utils import list_all_files
+from dcm_deidentifiers.phi_detectors import DcmRobustPHIDetector
+from dcm_deidentifiers.img_deidentifier import DCMImageDeidentifier
 
 def id_map_csv_to_dict(csvfile: str):
     id_map = {}
@@ -103,7 +103,7 @@ def find_mismatched_tags(tagvalues: list[tuple]):
     return n_mismatched, mismatched_tags
 
 
-def find_mismatched_in_pixel_data(imganonymizer: DCMImageAnonymizer, dcm_deid_gt, dcm_deid):
+def find_mismatched_in_pixel_data(imganonymizer: DCMImageDeidentifier, dcm_deid_gt, dcm_deid):
     gt_note, _, _ = imganonymizer.extract_texts_as_note(dcm_deid_gt.pixel_array)
     gt_texts = gt_note.split('\n')
 
@@ -119,7 +119,7 @@ def find_mismatched_in_pixel_data(imganonymizer: DCMImageAnonymizer, dcm_deid_gt
 
 
 def evaluate_series_by_index(
-        series_idx, loader, series_output_path_map, imganonymizer: DCMImageAnonymizer,
+        series_idx, loader, series_output_path_map, imganonymizer: DCMImageDeidentifier,
         evaluate_pixel_data: bool = True
     ):
 
@@ -179,7 +179,7 @@ if __name__ == "__main__":
     )
 
     detector = DcmRobustPHIDetector()
-    img_anonymizer = DCMImageAnonymizer(phi_detector=detector)
+    img_anonymizer = DCMImageDeidentifier(phi_detector=detector)
 
     anonymizer_output_path = Path(root_data_dir, 'anonymizer-output/Pseudo-PHI-DICOM-Data-10-removed-ctp-custom')
 

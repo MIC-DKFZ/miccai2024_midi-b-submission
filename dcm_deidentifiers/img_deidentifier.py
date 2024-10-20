@@ -5,13 +5,13 @@ import cv2
 import numpy as np
 import logging
 
-from dcm_anonymizers.phi_detectors import DcmPHIDetector
+from dcm_deidentifiers.phi_detectors import DcmPHIDetector
 
 # Function to calculate Euclidean distance between two points
 def euclidean_distance(point1, point2):
     return np.sqrt((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2)
 
-class DCMImageAnonymizer:
+class DCMImageDeidentifier:
     def __init__(self,  phi_detector: DcmPHIDetector, use_gpu: bool = True) -> None:
         self.ocr = None
         self.detector = phi_detector

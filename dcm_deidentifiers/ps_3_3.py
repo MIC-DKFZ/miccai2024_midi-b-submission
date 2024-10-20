@@ -21,13 +21,13 @@ from dicomanonymizer.simpledicomanonymizer import (
 
 from dicomanonymizer.format_tag import tag_to_hex_strings
 
-from dcm_anonymizers.utils import int_tuple_to_basetag, get_hashid, parse_date_string
-from dcm_anonymizers.phi_detectors import DcmPHIDetector, DcmRobustPHIDetector
+from dcm_deidentifiers.utils import int_tuple_to_basetag, get_hashid, parse_date_string
+from dcm_deidentifiers.phi_detectors import DcmPHIDetector, DcmRobustPHIDetector
 
 
 import logging
 
-PS_3_3_ATTRS_JSON = '../dcm_anonymizers/ps3.3_profile_attrs.json'
+PS_3_3_ATTRS_JSON = '../dcm_deidentifiers/ps3.3_profile_attrs.json'
 SHIFT_DATE_OFFSET = 120
 
 def format_action_dict(actions):

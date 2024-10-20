@@ -14,7 +14,7 @@ def replace_non_alphanumeric_with_space(input_string):
     result = re.sub(r'[^a-zA-Z0-9]', ' ', input_string)
     return result
 
-PRIVATE_TAGS_DICT = 'dcm_anonymizers/tcia_private_tags_dict.json'
+PRIVATE_TAGS_DICT = 'dcm_deidentifiers/tcia_private_tags_dict.json'
 
 class PrivateTagsExtractor:
     def __init__(self, private_tags_dict_path: str):
