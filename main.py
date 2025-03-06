@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from dcm_deidentifers.deidentifer import Anonymizer
+from dcm_deidentifiers.deidentifier import Anonymizer
 
 DEID_DATASET_ROOT = '/home/r079a/Desktop/de-identification/dataset'
 
