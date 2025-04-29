@@ -1,4 +1,5 @@
 import re
+import json
 from typing import Union
 import numpy as np
 
@@ -10,6 +11,8 @@ from deid_app.robust_app import RobustDeID as RobustDeIDPipeline
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+
+IMAGING_ANATOMY_VOCAB_PATH = "docs/imaging_anatomy_vocab.json"
 
 class DcmPHIDetector:
     def __init__(self) -> None:
@@ -198,7 +201,7 @@ class DcmPHIDetector:
 
 
 class DcmRobustPHIDetector:
-    def __init__(self, logging: bool = False) -> None:
+    def __init__(self, logging: bool = False, vocab_file: str = IMAGING_ANATOMY_VOCAB_PATH) -> None:
         self.modelname = "OBI-RoBERTa De-ID"
         self.threshold = "No threshold"
         self.pipeline = None
@@ -206,6 +209,14 @@ class DcmRobustPHIDetector:
         self.logging = logging
         self.detected_entity_log = {}
         self.missed_by_whitelist = {}
+
+        self.medical_vocabs = []
+
+        # load vocab from the file
+        with open(vocab_file) as json_data:
+            d = json.load(json_data)
+            self.medical_vocabs = d['vocab']
+            json_data.close()
 
         self._init_pipeline()
     
@@ -340,10 +351,12 @@ class DcmRobustPHIDetector:
         whole_string_match_templt = r'(?i)^{}$'
 
         entity_whitelist = [
-            'breast?', 'contrast', 'bilateral', 'ressonancia', 
-            'magnetica', 'pelve', 'lung', 'chest', 'abdomen', 
-            'miednicy',
+            'breast?', 'bilateral', 'ressonancia', 
+            'magnetica', 'pelve', 'miednicy',
         ]
+
+        if len(self.medical_vocabs) > 0:
+            entity_whitelist.extend(self.medical_vocabs)
 
         exact_match_whitelist = [
             ',', '-', r'\(', r'\)', 
